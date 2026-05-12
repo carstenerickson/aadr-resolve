@@ -1,0 +1,140 @@
+# AADR `.anno` schema class E
+# Generated from bench-verify pass 2026-05-11 (see scripts/ancestry/aadr-resolve/bench/).
+# To regenerate after a new AADR release, run: python gen_schemas.py
+
+class_id: E
+applies_to:
+  - v66.0
+n_columns: 49
+detection_signature:
+  col_0_normalized: genetic_id
+  col_1_normalized: persistent_genetic_id
+fields:
+  genetic_id:
+    column: 1
+    normalized_header: genetic_id
+    display_header: Genetic ID
+  persistent_genetic_id:
+    column: 2
+    normalized_header: persistent_genetic_id
+    display_header: Persistent Genetic ID
+  individual_id:
+    column: 3
+    normalized_header: individual_id
+    display_header: Individual ID
+  skeletal_code:
+    column: 4
+    normalized_header: skeletal_code
+    display_header: Skeletal code
+  skeletal_element:
+    column: 5
+    normalized_header: skeletal_element
+    display_header: Skeletal element
+  publication:
+    column: 7
+    normalized_header: publication_abbreviation
+    display_header: Publication abbreviation
+  date_method:
+    column: 10
+    normalized_header: method_for_determining_date
+    display_header: Method for Determining Date
+  date_mean_bp:
+    column: 11
+    normalized_header: date_mean_in_bp_in_years_before_1950_ce
+    display_header: Date mean in BP in years before 1950 CE
+  date_sd_bp:
+    column: 12
+    normalized_header: date_standard_deviation_in_bp
+    display_header: Date standard deviation in BP
+  full_date:
+    column: 13
+    normalized_header: full_date_one_of_two_formats
+    display_header: Full Date One of two formats.
+  group_id:
+    column: 15
+    normalized_header: group_id
+    display_header: Group ID
+  locality:
+    column: 16
+    normalized_header: locality
+    display_header: Locality
+  country_or_political_entity:
+    column: 17
+    normalized_header: political_entity
+    display_header: Political Entity
+  latitude:
+    column: 18
+    normalized_header: latitude
+    display_header: Latitude
+  longitude:
+    column: 19
+    normalized_header: longitude
+    display_header: Longitude
+  pulldown_strategy:
+    column: 20
+    normalized_header: pulldown_strategy
+    display_header: Pulldown Strategy
+  data_source_or_type:
+    column: 22
+    normalized_header: data_type
+    display_header: Data type
+  n_libraries:
+    column: 23
+    normalized_header: no_libraries
+    display_header: No. Libraries
+  snps_hit_1240k:
+    column: 27
+    normalized_header: snps_hit_on_autosomal_targets
+    display_header: SNPs hit on autosomal targets
+  snps_hit_ho:
+    column: 28
+    normalized_header: snps_hit_on_autosomal_targets
+    display_header: SNPs hit on autosomal targets
+  coverage_1240k:
+    column: 24
+    normalized_header: mean_coverage_on_115m_autosomal_targets_for_full_bam
+    display_header: Mean coverage on 1.15M autosomal targets for full bam
+  molecular_sex:
+    column: 31
+    normalized_header: molecular_sex
+    display_header: Molecular Sex
+  y_haplogroup_isogg:
+    column: 36
+    normalized_header: y_haplogroup_in_isogg_notation_automatically_called_based_on_yfull_1203_with_the_software_described_in_lazaridis_et_al_science_2022
+    display_header: Y haplogroup  in ISOGG notation automatically called based on Yfull 12.03 with the software described in Lazaridis et al. Science 2022
+  mtdna_haplogroup:
+    column: 39
+    normalized_header: mtdna_haplogroup_if_2x_or_published
+    display_header: mtDNA haplogroup if >2x or published
+  mtdna_coverage:
+    column: 38
+    normalized_header: mtdna_coverage
+    display_header: mtDNA coverage
+  damage_rate:
+    column: 41
+    normalized_header: damage_rate_in_first_nucleotide_on_sequences_overlapping_1240k_targets
+    display_header: Damage rate in first nucleotide on sequences overlapping 1240k targets
+  sex_ratio_yx:
+    column: 42
+    normalized_header: sex_ratio
+    display_header: Sex ratio
+  library_type:
+    column: 45
+    normalized_header: library_type
+    display_header: Library type
+  assessment:
+    column: 48
+    normalized_header: assessment
+    display_header: ASSESSMENT
+  assessment_warnings:
+    column: 49
+    normalized_header: assessment_warnings
+    display_header: ASSESSMENT WARNINGS
+
+notes:
+  - Header for col 1 (Genetic ID) contains a ~600-byte inline documentation paragraph; header normalization is REQUIRED.
+  - Master ID RENAMED to Individual ID at col 3; new numeric Persistent Genetic ID column inserted at col 2.
+  - PGID is per-Genetic-ID-row (not per-Individual); useful only as a future-stable per-row identifier.
+  - "Some cells contain TSV-quoted multi-line text with literal '\"\"' double-quotes; csv.QUOTE_NONE still parses them safely as bytes (no embedded-quote loss observed in v66)."
+  - "Column 33 and 34 BOTH normalize to 'sum_total_of_roh_segments_20cm'; v66 has a duplicate-name bug in the upstream .anno. Loader should detect and warn."
+  - "Coverage column at col 24 ('Mean coverage on 1.15M autosomal targets for full bam') is the canonical 1240k-region coverage; mapped to 'coverage_1240k'. v66 also has col 25 ('Mean coverage on non-targeted autosomal SNPs') which is a different semantic — left unmapped at the canonical-field level."

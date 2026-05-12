@@ -1,0 +1,92 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aadr-resolve"
+version = "0.1.0.dev0"
+description = "AADR cross-version GeneticID / MasterID join utility for ancient-DNA / population-genetics workflows."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.11,<3.14"
+authors = [
+    { name = "Carsten Erickson", email = "carstene@mailbox.org" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Typing :: Typed",
+]
+dependencies = [
+    "pandas>=2.0,<3",
+    "click>=8.1,<9",
+    "pyyaml>=6.0,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-cov",
+    "mypy>=1.10",
+    "ruff>=0.5",
+    "build",
+    "twine",
+    "types-PyYAML",
+]
+
+[project.scripts]
+aadr-resolve = "aadr_resolve.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/carstenerickson/aadr-resolve"
+Repository = "https://github.com/carstenerickson/aadr-resolve"
+Issues = "https://github.com/carstenerickson/aadr-resolve/issues"
+Changelog = "https://github.com/carstenerickson/aadr-resolve/blob/main/CHANGELOG.md"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+aadr_resolve = ["schemas/*.yaml", "py.typed"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W", "B", "RUF", "UP", "SIM", "PL"]
+ignore = [
+    "PLR0913",   # too-many-arguments (orchestrators legitimately take many)
+    "PLR2004",   # magic-value-comparison (column-index ints, etc.)
+    "PLC0415",   # import-not-at-top (we use local imports to break circular deps)
+    "RUF002",    # ambiguous unicode (en-dash etc. are fine in docstrings)
+]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = ["pandas.*", "yaml.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: tests that take >1s wallclock; opt-in via -m slow",
+    "external: tests that require external tools or real AADR files",
+    "perf: performance benchmarks; CI-gated thresholds",
+]
+addopts = "-ra --strict-markers"

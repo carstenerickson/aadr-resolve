@@ -1,0 +1,133 @@
+# AADR `.anno` schema class D
+# Generated from bench-verify pass 2026-05-11 (see scripts/ancestry/aadr-resolve/bench/).
+# To regenerate after a new AADR release, run: python gen_schemas.py
+
+class_id: D
+applies_to:
+  - v62.0
+n_columns: 42
+detection_signature:
+  col_0_normalized: genetic_id
+  col_1_normalized: master_id
+fields:
+  genetic_id:
+    column: 1
+    normalized_header: genetic_id
+    display_header: Genetic ID
+  individual_id:
+    column: 2
+    normalized_header: master_id
+    display_header: Master ID
+  skeletal_code:
+    column: 3
+    normalized_header: skeletal_code
+    display_header: Skeletal code
+  skeletal_element:
+    column: 4
+    normalized_header: skeletal_element
+    display_header: Skeletal element
+  publication:
+    column: 6
+    normalized_header: publication_abbreviation
+    display_header: Publication abbreviation
+  date_method:
+    column: 9
+    normalized_header: method_for_determining_date
+    display_header: Method for Determining Date
+  date_mean_bp:
+    column: 10
+    normalized_header: date_mean_in_bp_in_years_before_1950_ce
+    display_header: Date mean in BP in years before 1950 CE
+  date_sd_bp:
+    column: 11
+    normalized_header: date_standard_deviation_in_bp
+    display_header: Date standard deviation in BP
+  full_date:
+    column: 12
+    normalized_header: full_date_one_of_two_formats
+    display_header: Full Date One of two formats.
+  group_id:
+    column: 14
+    normalized_header: group_id
+    display_header: Group ID
+  locality:
+    column: 15
+    normalized_header: locality
+    display_header: Locality
+  country_or_political_entity:
+    column: 16
+    normalized_header: political_entity
+    display_header: Political Entity
+  latitude:
+    column: 17
+    normalized_header: lat
+    display_header: Lat.
+  longitude:
+    column: 18
+    normalized_header: long
+    display_header: Long.
+  pulldown_strategy:
+    column: 19
+    normalized_header: pulldown_strategy
+    display_header: Pulldown Strategy
+  data_source_or_type:
+    column: 21
+    normalized_header: data_type
+    display_header: Data type
+  n_libraries:
+    column: 22
+    normalized_header: no_libraries
+    display_header: No. Libraries
+  snps_hit_1240k:
+    column: 23
+    normalized_header: snps_hit_on_autosomal_targets
+    display_header: SNPs hit on autosomal targets
+  snps_hit_ho:
+    column: 24
+    normalized_header: snps_hit_on_autosomal_targets
+    display_header: SNPs hit on autosomal targets
+  molecular_sex:
+    column: 25
+    normalized_header: molecular_sex
+    display_header: Molecular Sex
+  y_haplogroup_isogg:
+    column: 29
+    normalized_header: y_haplogroup_in_isogg_v1573_notation_automatically_called_based_on_yfull_with_the_software_described_in_lazaridis_et_al_science_2022
+    display_header: Y haplogroup  in ISOGG v15.73 notation automatically called based on Yfull with the software described in Lazaridis et al. Science 2022
+  mtdna_haplogroup:
+    column: 32
+    normalized_header: mtdna_haplogroup_if_2x_or_published
+    display_header: mtDNA haplogroup if >2x or published
+  mtdna_coverage:
+    column: 31
+    normalized_header: mtdna_coverage
+    display_header: mtDNA coverage
+  damage_rate:
+    column: 34
+    normalized_header: damage_rate_in_first_nucleotide_on_sequences_overlapping_1240k_targets
+    display_header: Damage rate in first nucleotide on sequences overlapping 1240k targets
+  sex_ratio_yx:
+    column: 35
+    normalized_header: sex_ratio
+    display_header: Sex ratio
+  library_type:
+    column: 38
+    normalized_header: library_type
+    display_header: Library type
+  assessment:
+    column: 41
+    normalized_header: assessment
+    display_header: ASSESSMENT
+  assessment_warnings:
+    column: 42
+    normalized_header: assessment_warning
+    display_header: ASSESSMENT WARNING
+
+# Fields not present in this class (canonical names unmapped here):
+#   - persistent_genetic_id
+#   - coverage_1240k
+
+notes:
+  - Header for col 1 (Genetic ID) contains a ~250-byte inline documentation paragraph; header normalization (strip-at-first-bracket) is REQUIRED.
+  - Class is similar to C but adds back some columns (doi, link, age_at_death, ROH, hapConX, etc.) without changing the col 1-2 positions.
+  - "NO COVERAGE COLUMN — v62 dropped both the bam-cov and the 1240k-cov columns. 'coverage_1240k' is unmapped here; AnnoFrame.coverage returns a Float64 Series of all-NaN. aadr-subset's `min_coverage:` filter on v62 input therefore selects nothing; users can fall back to `min_snps_hit_1240k:` (or invoke aadr-resolve with `--coverage-derive snps_hit_1240k` to compute a fraction-of-1240k-sites proxy)."

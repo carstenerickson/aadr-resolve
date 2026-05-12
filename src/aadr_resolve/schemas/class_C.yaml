@@ -1,0 +1,138 @@
+# AADR `.anno` schema class C
+# Generated from bench-verify pass 2026-05-11 (see scripts/ancestry/aadr-resolve/bench/).
+# To regenerate after a new AADR release, run: python gen_schemas.py
+
+class_id: C
+applies_to:
+  - v54.1
+n_columns: 36
+detection_signature:
+  col_0_normalized: genetic_id
+  col_1_normalized: master_id
+fields:
+  genetic_id:
+    column: 1
+    normalized_header: genetic_id
+    display_header: Genetic ID
+  individual_id:
+    column: 2
+    normalized_header: master_id
+    display_header: Master ID
+  skeletal_code:
+    column: 3
+    normalized_header: skeletal_code
+    display_header: Skeletal code
+  skeletal_element:
+    column: 4
+    normalized_header: skeletal_element
+    display_header: Skeletal element
+  publication:
+    column: 6
+    normalized_header: publication
+    display_header: Publication
+  date_method:
+    column: 7
+    normalized_header: method_for_determining_date
+    display_header: Method for Determining Date
+  date_mean_bp:
+    column: 8
+    normalized_header: date_mean_in_bp_in_years_before_1950_ce
+    display_header: Date mean in BP in years before 1950 CE
+  date_sd_bp:
+    column: 9
+    normalized_header: date_standard_deviation_in_bp
+    display_header: Date standard deviation in BP
+  full_date:
+    column: 10
+    normalized_header: full_date_one_of_two_formats
+    display_header: Full Date One of two formats.
+  group_id:
+    column: 12
+    normalized_header: group_id
+    display_header: Group ID
+  locality:
+    column: 13
+    normalized_header: locality
+    display_header: Locality
+  country_or_political_entity:
+    column: 14
+    normalized_header: political_entity
+    display_header: Political Entity
+  latitude:
+    column: 15
+    normalized_header: lat
+    display_header: Lat.
+  longitude:
+    column: 16
+    normalized_header: long
+    display_header: Long.
+  pulldown_strategy:
+    column: 17
+    normalized_header: pulldown_strategy
+    display_header: Pulldown Strategy
+  data_source_or_type:
+    column: 18
+    normalized_header: data_source
+    display_header: Data source
+  n_libraries:
+    column: 19
+    normalized_header: no_libraries
+    display_header: No. Libraries
+  snps_hit_1240k:
+    column: 21
+    normalized_header: snps_hit_on_autosomal_targets
+    display_header: SNPs hit on autosomal targets
+  snps_hit_ho:
+    column: 22
+    normalized_header: snps_hit_on_autosomal_targets
+    display_header: SNPs hit on autosomal targets
+  coverage_1240k:
+    column: 20
+    normalized_header: 1240k_coverage
+    display_header: 1240k coverage
+  molecular_sex:
+    column: 23
+    normalized_header: molecular_sex
+    display_header: Molecular Sex
+  y_haplogroup_isogg:
+    column: 26
+    normalized_header: y_haplogroup
+    display_header: Y haplogroup
+  mtdna_haplogroup:
+    column: 28
+    normalized_header: mtdna_haplogroup_if_2x_or_published
+    display_header: mtDNA haplogroup if >2x or published
+  mtdna_coverage:
+    column: 27
+    normalized_header: mtdna_coverage
+    display_header: mtDNA coverage
+  damage_rate:
+    column: 30
+    normalized_header: damage_rate_in_first_nucleotide_on_sequences_overlapping_1240k_targets
+    display_header: Damage rate in first nucleotide on sequences overlapping 1240k targets
+  sex_ratio_yx:
+    column: 31
+    normalized_header: sex_ratio
+    display_header: Sex ratio
+  library_type:
+    column: 32
+    normalized_header: library_type
+    display_header: Library type
+  assessment:
+    column: 34
+    normalized_header: assessment
+    display_header: ASSESSMENT
+  assessment_warnings:
+    column: 35
+    normalized_header: assessment_warnings
+    display_header: ASSESSMENT WARNINGS
+
+# Fields not present in this class (canonical names unmapped here):
+#   - persistent_genetic_id
+
+notes:
+  - Index column DROPPED from B (column positions shift by -1).
+  - "12 columns dropped from B: index, country (renamed to political_entity), the BAM-coverage column ('Coverage on autosomal targets'), 4 X-contam ANGSD cols, 4 contamLD cols."
+  - "'1240k coverage' (col 20) survives the drop; mapped to 'coverage_1240k'. The general bam-cov is gone."
+  - Header has trailing tab producing phantom empty 37th column; loader must drop it.
+  - Sample I21276 has an embedded quote character (same as B); loader MUST use csv.QUOTE_NONE.

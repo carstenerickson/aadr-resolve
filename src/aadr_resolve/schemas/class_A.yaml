@@ -1,0 +1,134 @@
+# AADR `.anno` schema class A
+# Generated from bench-verify pass 2026-05-11 (see scripts/ancestry/aadr-resolve/bench/).
+# To regenerate after a new AADR release, run: python gen_schemas.py
+
+class_id: A
+applies_to:
+  - v44.3
+  - v50.0
+n_columns: [43, 44]
+detection_signature:
+  col_0_normalized: index
+  col_1_normalized: version_id
+fields:
+  genetic_id:
+    column: 2
+    normalized_header: version_id
+    display_header: Version ID
+  individual_id:
+    column: 3
+    normalized_header: master_id
+    display_header: Master ID
+  skeletal_code:
+    column: 4
+    normalized_header: skeletal_code
+    display_header: Skeletal code
+  skeletal_element:
+    column: 5
+    normalized_header: skeletal_element
+    display_header: Skeletal element
+  publication:
+    column: 7
+    normalized_header: publication
+    display_header: Publication
+  date_method:
+    column: 9
+    normalized_header: method_for_determining_date
+    display_header: Method for Determining Date
+  date_mean_bp:
+    column: 10
+    normalized_header: date_mean_in_bp
+    display_header: Date mean in BP
+  date_sd_bp:
+    column: 11
+    normalized_header: date_standard_deviation_in_bp
+    display_header: Date standard deviation in BP
+  full_date:
+    column: 12
+    normalized_header: full_date
+    display_header: Full Date
+  group_id:
+    column: 13
+    normalized_header: groupid
+    display_header: GroupID
+  locality:
+    column: 14
+    normalized_header: locality
+    display_header: Locality
+  country_or_political_entity:
+    column: 15
+    normalized_header: country
+    display_header: Country
+  latitude:
+    column: 16
+    normalized_header: lat
+    display_header: Lat.
+  longitude:
+    column: 17
+    normalized_header: long
+    display_header: Long.
+  data_source_or_type:
+    column: 18
+    normalized_header: data_source
+    display_header: Data source
+  n_libraries:
+    column: 19
+    normalized_header: no_libraries
+    display_header: No. Libraries
+  snps_hit_1240k:
+    column: 21
+    normalized_header: snps_hit_on_autosomal_targets
+    display_header: SNPs hit on autosomal targets
+  coverage_1240k:
+    column: 20
+    normalized_header: coverage_on_autosomal_targets
+    display_header: Coverage on autosomal targets
+  molecular_sex:
+    column: 23
+    normalized_header: sex
+    display_header: Sex
+  y_haplogroup_isogg:
+    column: 25
+    normalized_header: y_haplogroup_in_isogg_v1573_notation
+    display_header: Y haplogroup  in ISOGG v15.73 notation
+  mtdna_haplogroup:
+    column: 27
+    normalized_header: mtdna_haplogroup_if_2_coverage_or_published
+    display_header: mtDNA haplogroup if ≥2 coverage or published
+  mtdna_coverage:
+    column: 26
+    normalized_header: mtdna_coverage
+    display_header: mtDNA coverage
+  damage_rate:
+    column: 31
+    normalized_header: damage_rate_in_first_nucleotide_on_sequences_overlapping_1240k_targets
+    display_header: Damage rate in first nucleotide on sequences overlapping 1240k targets
+  sex_ratio_yx:
+    column: 32
+    normalized_header: sex_ratio
+    display_header: Sex ratio
+  library_type:
+    column: 41
+    normalized_header: library_type
+    display_header: Library type
+  assessment:
+    column: 43
+    normalized_header: assessment
+    display_header: ASSESSMENT
+
+# Fields not present in this class (canonical names unmapped here):
+#   - persistent_genetic_id
+#   - pulldown_strategy
+#   - snps_hit_ho
+#   - assessment_warnings
+
+notes:
+  - "v44.3 has 43 columns; v50.0 has 44 (adds 'Age at Death Estimate' at col 12)."
+  - "Both versions call the per-row identifier 'Version ID' (col 2), not 'Genetic ID'."
+  - "v44.3 spells the group column 'GroupID' (no space); v50.0 spells it 'Group ID'. Match-normalization (lowercase + collapse non-word chars) maps both to 'group_id'."
+  - "Both have an 'Index' column at position 1; dropped by class C."
+  - "In class A there is ONE 'SNPs hit on autosomal targets' column (col 21) without a 1240k vs HO discriminator — it gets mapped to 'snps_hit_1240k' here (v44/v50 were 1240k-only releases for this `.anno`). 'snps_hit_ho' remains unmapped."
+  - "'Molecular Sex' field is just 'Sex' in v44/v50 (col 23)."
+  - "Pulldown Strategy column not present in v44/v50 — this metadata was tracked at a coarser granularity (the 'Data source' column)."
+  - "Coverage column (col 20 'Coverage on autosomal targets') is BAM-coverage (whole-shotgun), not 1240k-specific. Mapped here to 'coverage_1240k' as the closest semantic proxy; documented as imperfect. Modern array-genotyped samples appear with empty value (Float64 NaN)."
+  - "Date column ('Date mean in BP') is at col 10 in v44.3 (extra 'Representative contact' col 8 before it) and col 9 in v50.0. Both are clean integer calBP with no nulls."

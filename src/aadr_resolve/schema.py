@@ -1,0 +1,110 @@
+"""Schema-registry loader + class dispatcher. Per LLD §3.1."""
+
+from __future__ import annotations
+
+import re
+from importlib import resources
+
+import yaml
+
+from .errors import InvariantViolation, SchemaDetectionError
+from .types import SchemaClass, SchemaClassDef
+
+
+def normalize_header(raw: str) -> str:
+    """Match-normalized header per HLD §`.anno` loader.
+
+    Strips at first '(' / '[' / ';' / ':' to discard embedded inline-doc
+    paragraphs (v66 col 1's 600-byte case; v44/v50 colon-bearing date headers).
+    Then lowercase + drop non-word/space + collapse whitespace to '_'.
+    """
+    s = re.split(r"[(\[;:]", raw, maxsplit=1)[0].strip()
+    s = re.sub(r"[^\w\s]", "", s).strip().lower()
+    return re.sub(r"\s+", "_", s)
+
+
+def display_normalize(raw: str) -> str:
+    """Display-normalized form: strip at first bracket-class char, trim.
+
+    Used for diagnostic output (`schema` subcommand)."""
+    return re.split(r"[(\[;:]", raw, maxsplit=1)[0].strip()
+
+
+def load_schema(class_id: SchemaClass) -> SchemaClassDef:
+    """Load one class YAML from the in-package schemas/ directory."""
+    files = resources.files("aadr_resolve.schemas")
+    yaml_path = files / f"class_{class_id.value}.yaml"
+    try:
+        with yaml_path.open("rb") as f:
+            data = yaml.safe_load(f)
+    except (FileNotFoundError, yaml.YAMLError) as e:
+        raise InvariantViolation(
+            f"failed to load schema YAML for class {class_id.value}: {e}"
+        ) from e
+    try:
+        return SchemaClassDef.from_dict(data)
+    except ValueError as e:
+        raise InvariantViolation(f"malformed schema YAML for class {class_id.value}: {e}") from e
+
+
+def load_all_schemas() -> dict[SchemaClass, SchemaClassDef]:
+    """Pre-load all 5 class YAMLs.
+
+    Validated: signature uniqueness across the registry. Two classes with the
+    same `(n_columns, col_0_normalized, col_1_normalized)` would silently
+    break dispatch — caught at load time."""
+    schemas = {c: load_schema(c) for c in SchemaClass}
+
+    # Signature-uniqueness invariant: for each (ncols, sig0, sig1), at most one class.
+    seen: dict[tuple[int, str, str], SchemaClass] = {}
+    for cls, defn in schemas.items():
+        for ncols in defn.n_columns_set:
+            key = (ncols, *defn.detection_signature)
+            if key in seen:
+                raise InvariantViolation(
+                    f"duplicate schema signature {key} shared by classes "
+                    f"{seen[key].value} and {cls.value}. Schema YAMLs are malformed."
+                )
+            seen[key] = cls
+    return schemas
+
+
+def detect_class(
+    raw_headers: list[str],
+    schemas: dict[SchemaClass, SchemaClassDef],
+    *,
+    override: SchemaClass | None = None,
+) -> SchemaClassDef:
+    """Map an .anno header to a SchemaClassDef.
+
+    Algorithm (per LLD §3.1):
+      1. If override provided, return that class without signature validation.
+      2. Compute (ncols, normalize(col[0]), normalize(col[1])).
+      3. For each class, check signature membership. Exactly one match -> return.
+      4. Zero matches -> SchemaDetectionError listing observed + known signatures."""
+    if override is not None:
+        return schemas[override]
+
+    if len(raw_headers) < 2:
+        raise SchemaDetectionError(
+            observed=(len(raw_headers), "", ""),
+            known=[
+                (ncols, *defn.detection_signature)
+                for defn in schemas.values()
+                for ncols in defn.n_columns_set
+            ],
+        )
+
+    ncols = len(raw_headers)
+    norm_0 = normalize_header(raw_headers[0])
+    norm_1 = normalize_header(raw_headers[1])
+    observed = (ncols, norm_0, norm_1)
+
+    for defn in schemas.values():
+        if ncols in defn.n_columns_set and defn.detection_signature == (norm_0, norm_1):
+            return defn
+
+    known = [
+        (n, *defn.detection_signature) for defn in schemas.values() for n in defn.n_columns_set
+    ]
+    raise SchemaDetectionError(observed=observed, known=known)
