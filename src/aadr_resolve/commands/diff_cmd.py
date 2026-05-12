@@ -11,7 +11,10 @@ import click
 from ..annoframe import AnnoFrame
 from ..bridge import detect_bridge, load_manual_bridge, merge_with_overrides
 from ..diff import compute_diff
-from ..types import DiffResult, SchemaClass
+from ..types import DiffResult, GroupChangeClass, SchemaClass
+
+# Stderr-warn threshold for buffered JSON size when --all-events is set.
+SIZE_WARN_THRESHOLD_BYTES: int = 100 * 1024 * 1024  # 100 MB
 
 
 @click.command()
@@ -27,6 +30,22 @@ from ..types import DiffResult, SchemaClass
     default=None,
     help="Write to file instead of stdout.",
 )
+@click.option(
+    "--include-class",
+    "include_classes",
+    multiple=True,
+    type=click.Choice([c.value for c in GroupChangeClass]),
+    help="Include the per-event array for a Group-ID-change class. Repeatable.",
+)
+@click.option(
+    "--all-events",
+    is_flag=True,
+    help=(
+        "Include per-event arrays for ALL classes (plus added/removed/"
+        "genetic_id_renamed events). Warns to stderr if predicted JSON "
+        "size > 100 MB; prefer --tsv at scale."
+    ),
+)
 @click.pass_context
 def diff_cmd(
     ctx: click.Context,
@@ -35,6 +54,8 @@ def diff_cmd(
     as_json: bool,
     as_tsv: bool,
     out_path: Path | None,
+    include_classes: tuple[str, ...],
+    all_events: bool,
 ) -> None:
     """Structured diff between two .anno files."""
     shared = ctx.obj["shared_opts"] if ctx.obj else {}
@@ -60,12 +81,28 @@ def diff_cmd(
 
     result = compute_diff(af_old, af_new, bridge=bridge)
 
-    text = (
-        _format_diff_tsv(result)
-        if as_tsv
-        # --json is the default; explicit --json doesn't change behavior.
-        else json.dumps(result.to_dict(), indent=2) + "\n"
-    )
+    include_class_set: set[GroupChangeClass] = {GroupChangeClass(s) for s in include_classes}
+
+    if as_tsv:
+        text = _format_diff_tsv(result)
+    else:
+        if all_events:
+            predicted = result.predict_json_size_bytes(
+                include_class=include_class_set, all_events=all_events
+            )
+            if predicted > SIZE_WARN_THRESHOLD_BYTES:
+                sys.stderr.write(
+                    f"WARNING: predicted JSON size {predicted / (1024 * 1024):.1f} MB "
+                    f"exceeds {SIZE_WARN_THRESHOLD_BYTES / (1024 * 1024):.0f} MB; "
+                    f"prefer --tsv for large diffs.\n"
+                )
+        text = (
+            json.dumps(
+                result.to_dict(include_class=include_class_set, all_events=all_events),
+                indent=2,
+            )
+            + "\n"
+        )
 
     if out_path is not None:
         out_path.write_text(text, encoding="utf-8")

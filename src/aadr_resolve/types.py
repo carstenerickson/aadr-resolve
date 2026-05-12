@@ -253,9 +253,86 @@ class DiffResult:
             f"{substantive} substantive Group ID regroupings."
         )
 
-    def to_dict(self) -> dict[str, Any]:
-        """JSON-serializable summary view (no full event arrays — Day-7 adds
-        per-class event opt-in via --include-class / --all-events)."""
+    def to_dict(
+        self,
+        *,
+        include_class: set[GroupChangeClass] | None = None,
+        all_events: bool = False,
+    ) -> dict[str, Any]:
+        """JSON-serializable summary view.
+
+        Default behavior: `substantive_regroup` events are always
+        populated (small list); convention-restructure classes report
+        counts only (HLD §Output: diff). The `--include-class` flag opts
+        a specific GroupChangeClass's events back in; `all_events=True`
+        opts in every group-change class.
+
+        Independently, `added`, `removed`, and `genetic_id_renamed`
+        always emit `count` + `rate`; their per-event arrays appear under
+        the same parent with key `events` when `all_events=True` OR when
+        the corresponding class is in `include_class` (mapped via the
+        Literal class strings 'added' / 'removed' / 'genetic_id_renamed').
+
+        Per-class events under `group_changed.events_<class>` keyed by
+        the GroupChangeClass enum value (e.g.,
+        `events_convention_restructure_suffix`)."""
+        include_class = include_class or set()
+        if all_events:
+            include_class = set(GroupChangeClass)
+        # SUBSTANTIVE_REGROUP is always included.
+        include_class.add(GroupChangeClass.SUBSTANTIVE_REGROUP)
+
+        added_block: dict[str, Any] = {
+            "count": len(self.added),
+            "rate": self._added_rate(),
+        }
+        removed_block: dict[str, Any] = {
+            "count": len(self.removed),
+            "rate": self.removal_rate,
+        }
+        gid_renamed_block: dict[str, Any] = {"count": len(self.genetic_id_renamed)}
+        if all_events:
+            added_block["events"] = [
+                {
+                    "individual_id": e.individual_id_canonical,
+                    "first_seen_genetic_id": e.details.get("first_seen_genetic_id"),
+                }
+                for e in self.added
+            ]
+            removed_block["events"] = [
+                {
+                    "individual_id": e.individual_id_canonical,
+                    "last_seen_genetic_id": e.details.get("last_seen_genetic_id"),
+                }
+                for e in self.removed
+            ]
+            gid_renamed_block["events"] = [
+                {
+                    "individual_id": e.individual_id_canonical,
+                    "v_old_gids": e.details.get("v_old_gids"),
+                    "v_new_gids": e.details.get("v_new_gids"),
+                }
+                for e in self.genetic_id_renamed
+            ]
+
+        group_changed_block: dict[str, Any] = {
+            "count": sum(len(v) for v in self.group_changed_by_class.values()),
+            "by_class": {
+                cls.value: len(self.group_changed_by_class.get(cls, [])) for cls in GroupChangeClass
+            },
+        }
+        for cls in GroupChangeClass:
+            if cls not in include_class:
+                continue
+            group_changed_block[f"events_{cls.value}"] = [
+                {
+                    "individual_id": e.individual_id_canonical,
+                    "group_v_old": e.details.get("group_v_old"),
+                    "group_v_new": e.details.get("group_v_new"),
+                }
+                for e in self.group_changed_by_class.get(cls, [])
+            ]
+
         return {
             "v_old": self.v_old_label,
             "v_old_class": self.v_old_class.value,
@@ -264,9 +341,9 @@ class DiffResult:
             "v_new_class": self.v_new_class.value,
             "v_new_n_individuals": self.v_new_n_individuals,
             "shared_individuals": self.shared_individuals,
-            "added": {"count": len(self.added), "rate": self._added_rate()},
-            "removed": {"count": len(self.removed), "rate": self.removal_rate},
-            "genetic_id_renamed": {"count": len(self.genetic_id_renamed)},
+            "added": added_block,
+            "removed": removed_block,
+            "genetic_id_renamed": gid_renamed_block,
             "master_id_renamed": {
                 "count": len(self.master_id_renamed),
                 "events": [
@@ -278,27 +355,33 @@ class DiffResult:
                     for e in self.master_id_renamed
                 ],
             },
-            "group_changed": {
-                "count": sum(len(v) for v in self.group_changed_by_class.values()),
-                "by_class": {
-                    cls.value: len(self.group_changed_by_class.get(cls, []))
-                    for cls in GroupChangeClass
-                },
-                # Substantive_regroup events are always included (small list).
-                "events_substantive_regroup": [
-                    {
-                        "individual_id": e.individual_id_canonical,
-                        "group_v_old": e.details.get("group_v_old"),
-                        "group_v_new": e.details.get("group_v_new"),
-                    }
-                    for e in self.group_changed_by_class.get(
-                        GroupChangeClass.SUBSTANTIVE_REGROUP, []
-                    )
-                ],
-            },
+            "group_changed": group_changed_block,
             "gates": dict(self.gates),
             "summary": self.summary_line(),
         }
+
+    def predict_json_size_bytes(
+        self,
+        *,
+        include_class: set[GroupChangeClass] | None = None,
+        all_events: bool = False,
+    ) -> int:
+        """Predict JSON-serialized size for the configured event arrays.
+
+        Used by the --all-events size-warning path. ~150 bytes per event
+        is a calibrated approximation; the full dict has fixed overhead
+        on top. Conservative — slightly overestimates so a warning fires
+        before the actual write. Pinned in LLD §3.14."""
+        include_class = include_class or set()
+        if all_events:
+            include_class = set(GroupChangeClass)
+        include_class.add(GroupChangeClass.SUBSTANTIVE_REGROUP)
+
+        n_events = sum(len(self.group_changed_by_class.get(cls, [])) for cls in include_class)
+        if all_events:
+            n_events += len(self.added) + len(self.removed) + len(self.genetic_id_renamed)
+        # ~150 bytes per event + 2KB fixed overhead.
+        return n_events * 150 + 2048
 
     def _added_rate(self) -> float:
         if self.v_new_n_individuals == 0:

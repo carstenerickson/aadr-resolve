@@ -198,9 +198,7 @@ def test_aadr_subset_contract_q1_exception_classes_importable() -> None:
     assert issubclass(UsageError, AadrResolveError)
 
 
-def test_aadr_subset_contract_q2_mid_bridge_kwarg(
-    fixtures_dir: Path, tmp_path: Path
-) -> None:
+def test_aadr_subset_contract_q2_mid_bridge_kwarg(fixtures_dir: Path, tmp_path: Path) -> None:
     """aadr-subset Q2: resolve_master_ids accepts mid_bridge=PATH kwarg.
 
     Canonical name is `mid_bridge` (matches aadr-subset's defensive
@@ -211,8 +209,7 @@ def test_aadr_subset_contract_q2_mid_bridge_kwarg(
     # auto-detected I0001 -> Loschbour.
     override = tmp_path / "manual.tsv"
     override.write_text(
-        "v_old_label\tmid_old\tv_new_label\tmid_new\n"
-        "v54.1\tI0001\tv62.0\tFakeID\n",
+        "v_old_label\tmid_old\tv_new_label\tmid_new\nv54.1\tI0001\tv62.0\tFakeID\n",
         encoding="utf-8",
     )
 
@@ -253,8 +250,7 @@ def test_aadr_subset_contract_q2_resolve_genetic_ids_mid_bridge(
 
     override = tmp_path / "manual.tsv"
     override.write_text(
-        "v_old_label\tmid_old\tv_new_label\tmid_new\n"
-        "v54.1\tI0001\tv62.0\tFakeID\n",
+        "v_old_label\tmid_old\tv_new_label\tmid_new\nv54.1\tI0001\tv62.0\tFakeID\n",
         encoding="utf-8",
     )
 
