@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from itertools import pairwise
 from typing import Literal
 
-from .types import CohortManifest, DiffResult
+from .types import CohortManifest, DiffResult, GroupChangeClass, MIDBridge
 
 GateState = Literal["pass", "warn", "fail"]
 
@@ -105,4 +105,120 @@ def format_gate_message(gate: TurnoverGateResult, *, warn_pct: float, fail_pct: 
         f"{gate.v_old} -> {gate.v_new}: "
         f"removed {100 * gate.removal_rate:.1f}% "
         f"(warn={100 * warn_pct:.1f}%, fail={100 * fail_pct:.1f}%)"
+    )
+
+
+# === Gate (b): substantive-regroup (diff-only) ===
+
+
+@dataclass(frozen=True, slots=True)
+class SubstantiveRegroupGateResult:
+    """Diff-only gate fired when substantive_regroup count exceeds a
+    user-supplied threshold. Default behavior (threshold=None): always
+    'pass'."""
+
+    count: int
+    threshold: int | None
+    state: GateState
+
+
+def evaluate_substantive_regroup_gate(
+    result: DiffResult,
+    *,
+    fail_threshold: int | None = None,
+) -> SubstantiveRegroupGateResult:
+    """Return the gate result. With fail_threshold=None (HLD default —
+    gate disabled), state is always 'pass'."""
+    count = len(result.group_changed_by_class.get(GroupChangeClass.SUBSTANTIVE_REGROUP, []))
+    state: GateState = "pass"
+    if fail_threshold is not None and count > fail_threshold:
+        state = "fail"
+    return SubstantiveRegroupGateResult(count=count, threshold=fail_threshold, state=state)
+
+
+def format_substantive_regroup_message(gate: SubstantiveRegroupGateResult) -> str:
+    """Human-readable rendering for the diff-only substantive-regroup gate."""
+    return (
+        f"substantive regroup gate ({gate.state}): "
+        f"{gate.count} substantive_regroup events "
+        f"exceeds threshold of {gate.threshold}"
+    )
+
+
+# === Gate (d): cohort-coverage (cohort-only) ===
+
+
+@dataclass(frozen=True, slots=True)
+class CohortCoverageGateResult:
+    """Cohort-only gate fired when the fraction of cohort_input
+    individuals resolved (i.e. landing in the manifest with at least one
+    non-empty per-version GID) drops below configured thresholds."""
+
+    resolved: int
+    requested: int
+    coverage: float
+    state: GateState
+
+
+def evaluate_cohort_coverage_gate(
+    cohort_input: dict[str, str | None],
+    manifest: CohortManifest,
+    *,
+    bridge: MIDBridge | None = None,
+    cohort_version: str | None = None,
+    coverage_warn: float = 0.50,
+    coverage_fail: float = 0.25,
+) -> CohortCoverageGateResult:
+    """Compute coverage = (resolved / requested) where resolved is the
+    number of cohort_input individuals whose canonical form appears in
+    the manifest with at least one non-None per-version GID. Empty
+    cohort_input returns coverage=1.0 (vacuous pass).
+
+    `bridge` + `cohort_version` enable IID-to-canonical mapping so that
+    a cohort entry like 'I0001' (the v54 MID) counts as resolved when
+    the manifest carries the bridge-canonical 'Loschbour' row. If either
+    is None, falls back to raw IID equality (gate may under-count when
+    the cohort file uses pre-rename IIDs)."""
+    requested = len(cohort_input)
+    if requested == 0:
+        return CohortCoverageGateResult(resolved=0, requested=0, coverage=1.0, state="pass")
+
+    resolved_canonicals: set[str] = set()
+    for row in manifest.rows:
+        if any(gid is not None for gid in row.per_version_gid.values()):
+            resolved_canonicals.add(row.individual_id_canonical)
+
+    def _canonical(iid: str) -> str:
+        if bridge is not None and cohort_version is not None:
+            return bridge.canonical_id(cohort_version, iid)
+        return iid
+
+    resolved_count = sum(1 for iid in cohort_input if _canonical(iid) in resolved_canonicals)
+    coverage = resolved_count / requested
+
+    state: GateState = "pass"
+    if coverage < coverage_fail:
+        state = "fail"
+    elif coverage < coverage_warn:
+        state = "warn"
+    return CohortCoverageGateResult(
+        resolved=resolved_count,
+        requested=requested,
+        coverage=coverage,
+        state=state,
+    )
+
+
+def format_cohort_coverage_message(
+    gate: CohortCoverageGateResult,
+    *,
+    warn_pct: float,
+    fail_pct: float,
+) -> str:
+    """Human-readable rendering for the cohort-coverage gate."""
+    return (
+        f"cohort coverage gate ({gate.state}): "
+        f"{gate.resolved}/{gate.requested} resolved "
+        f"({100 * gate.coverage:.1f}%; warn<{100 * warn_pct:.0f}%, "
+        f"fail<{100 * fail_pct:.0f}%)"
     )

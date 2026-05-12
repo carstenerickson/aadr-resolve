@@ -233,3 +233,292 @@ def test_cohort_turnover_gate_empty_versions_returns_empty(tmp_path: Path) -> No
 
     gates = evaluate_turnover_cohort(manifest, turnover_warn=0.05, turnover_fail=0.30)
     assert gates == []
+
+
+# === Gate (b): substantive-regroup gate (diff-only) ===
+
+
+def test_substantive_regroup_gate_default_unbounded_passes(fixtures_dir: Path) -> None:
+    """With fail_threshold=None (HLD default — gate disabled), state is
+    always 'pass' regardless of substantive_regroup count."""
+    from aadr_resolve.gates import evaluate_substantive_regroup_gate
+
+    af_v54 = AnnoFrame.from_path(fixtures_dir / "loschbour_v54.anno", version_label="v54.1")
+    af_v62 = AnnoFrame.from_path(fixtures_dir / "loschbour_v62.anno", version_label="v62.0")
+    bridge = detect_bridge([af_v54, af_v62])
+    diff_result = compute_diff(af_v54, af_v62, bridge=bridge)
+
+    gate = evaluate_substantive_regroup_gate(diff_result, fail_threshold=None)
+    assert gate.state == "pass"
+    assert gate.threshold is None
+
+
+def test_substantive_regroup_gate_threshold_exceeded_fails(fixtures_dir: Path) -> None:
+    """fail_threshold=0 (exit-1 on ANY substantive_regroup event) fires
+    if the diff has at least one such event."""
+    from aadr_resolve.gates import evaluate_substantive_regroup_gate
+
+    af_v54 = AnnoFrame.from_path(fixtures_dir / "loschbour_v54.anno", version_label="v54.1")
+    af_v62 = AnnoFrame.from_path(fixtures_dir / "loschbour_v62.anno", version_label="v62.0")
+    bridge = detect_bridge([af_v54, af_v62])
+    diff_result = compute_diff(af_v54, af_v62, bridge=bridge)
+
+    gate = evaluate_substantive_regroup_gate(diff_result, fail_threshold=0)
+    # The Loschbour fixture's Luxembourg_Loschbour → Luxembourg_Mesolithic
+    # may classify as PARTIAL or SUBSTANTIVE_REGROUP. Whichever; we just
+    # check the gate logic against gate.count.
+    if gate.count > 0:
+        assert gate.state == "fail"
+    else:
+        assert gate.state == "pass"
+
+
+def test_substantive_regroup_gate_threshold_high_passes(fixtures_dir: Path) -> None:
+    """fail_threshold=1000 is well above any real diff's count; state='pass'."""
+    from aadr_resolve.gates import evaluate_substantive_regroup_gate
+
+    af_v54 = AnnoFrame.from_path(fixtures_dir / "loschbour_v54.anno", version_label="v54.1")
+    af_v62 = AnnoFrame.from_path(fixtures_dir / "loschbour_v62.anno", version_label="v62.0")
+    bridge = detect_bridge([af_v54, af_v62])
+    diff_result = compute_diff(af_v54, af_v62, bridge=bridge)
+
+    gate = evaluate_substantive_regroup_gate(diff_result, fail_threshold=1000)
+    assert gate.state == "pass"
+
+
+def test_diff_cmd_substantive_regroup_default_no_gate(fixtures_dir: Path) -> None:
+    """Without --substantive-regroup-fail, the gate is disabled — diff
+    exits 0 even with many substantive_regroup events."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+        ],
+        catch_exceptions=True,
+    )
+    # Exit 0 (turnover may still warn, but no fail).
+    assert result.exit_code == 0
+    assert "substantive regroup gate" not in result.stderr
+
+
+def test_diff_cmd_substantive_regroup_threshold_zero_fails_when_events(
+    fixtures_dir: Path,
+) -> None:
+    """--substantive-regroup-fail 0 + a diff with ANY substantive_regroup
+    event → exit 1 with the gate message in the ValidationError."""
+    from aadr_resolve.errors import ValidationError
+    from aadr_resolve.types import GroupChangeClass
+
+    # Pre-compute the diff to confirm it does carry substantive_regroup
+    # events; skip the CLI test otherwise (synth fixtures vary).
+    af_v54 = AnnoFrame.from_path(fixtures_dir / "loschbour_v54.anno", version_label="v54.1")
+    af_v62 = AnnoFrame.from_path(fixtures_dir / "loschbour_v62.anno", version_label="v62.0")
+    bridge = detect_bridge([af_v54, af_v62])
+    diff_result = compute_diff(af_v54, af_v62, bridge=bridge)
+    n_substantive = len(
+        diff_result.group_changed_by_class.get(GroupChangeClass.SUBSTANTIVE_REGROUP, [])
+    )
+    if n_substantive == 0:
+        # Cannot exercise this gate without a substantive_regroup event.
+        # Loschbour fixture may classify into PARTIAL; bail.
+        import pytest
+
+        pytest.skip("fixture has no substantive_regroup events; gate cannot fire")
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "--substantive-regroup-fail",
+            "0",
+            # Bump turnover thresholds so the substantive-regroup gate is
+            # the ONLY failing gate (synthetic fixtures may have high
+            # turnover by construction).
+            "--turnover-fail",
+            "1.0",
+        ],
+        catch_exceptions=True,
+    )
+    assert isinstance(result.exception, ValidationError)
+    assert "substantive regroup gate (fail)" in str(result.exception)
+
+
+# === Gate (d): cohort-coverage gate (cohort-only) ===
+
+
+def test_cohort_coverage_gate_full_coverage_passes(tmp_path: Path) -> None:
+    """When every cohort_input IID lands in the manifest, coverage=1.0;
+    state='pass'."""
+    from aadr_resolve.cohort import build_manifest
+    from aadr_resolve.gates import evaluate_cohort_coverage_gate
+    from aadr_resolve.library_token import build_all_library_identities
+
+    v44 = tmp_path / "v44.anno"
+    write_anno(SynthSpec(schema_class=SchemaClass.A, n_samples=10, seed=11), v44)
+    af = AnnoFrame.from_path(v44, version_label="v44.3")
+    bridge = detect_bridge([af])
+    cohort_input = {f"Synth{i + 1:04d}": None for i in range(10)}
+    library_identities = build_all_library_identities([af], bridge)
+    manifest = build_manifest(
+        cohort_input, [af], bridge, library_identities, cohort_version="v44.3"
+    )
+
+    gate = evaluate_cohort_coverage_gate(
+        cohort_input, manifest, coverage_warn=0.50, coverage_fail=0.25
+    )
+    assert gate.state == "pass"
+    assert gate.coverage == 1.0
+    assert gate.resolved == 10
+    assert gate.requested == 10
+
+
+def test_cohort_coverage_gate_warns_below_50pct(tmp_path: Path) -> None:
+    """40% resolved (4 of 10 cohort entries land in manifest) → state='warn'."""
+    from aadr_resolve.cohort import build_manifest
+    from aadr_resolve.gates import evaluate_cohort_coverage_gate
+    from aadr_resolve.library_token import build_all_library_identities
+
+    v44 = tmp_path / "v44.anno"
+    write_anno(SynthSpec(schema_class=SchemaClass.A, n_samples=4, seed=11), v44)
+    af = AnnoFrame.from_path(v44, version_label="v44.3")
+    bridge = detect_bridge([af])
+    # Request 10 IIDs but only 4 of them exist in the anno (Synth0001..0004).
+    cohort_input = {f"Synth{i + 1:04d}": None for i in range(10)}
+    library_identities = build_all_library_identities([af], bridge)
+    manifest = build_manifest(
+        cohort_input, [af], bridge, library_identities, cohort_version="v44.3"
+    )
+
+    gate = evaluate_cohort_coverage_gate(
+        cohort_input, manifest, coverage_warn=0.50, coverage_fail=0.25
+    )
+    assert gate.state == "warn"
+    assert gate.resolved == 4
+    assert gate.requested == 10
+    assert abs(gate.coverage - 0.40) < 1e-9
+
+
+def test_cohort_coverage_gate_fails_below_25pct(tmp_path: Path) -> None:
+    """20% resolved (2 of 10) → state='fail'."""
+    from aadr_resolve.cohort import build_manifest
+    from aadr_resolve.gates import evaluate_cohort_coverage_gate
+    from aadr_resolve.library_token import build_all_library_identities
+
+    v44 = tmp_path / "v44.anno"
+    write_anno(SynthSpec(schema_class=SchemaClass.A, n_samples=2, seed=11), v44)
+    af = AnnoFrame.from_path(v44, version_label="v44.3")
+    bridge = detect_bridge([af])
+    cohort_input = {f"Synth{i + 1:04d}": None for i in range(10)}
+    library_identities = build_all_library_identities([af], bridge)
+    manifest = build_manifest(
+        cohort_input, [af], bridge, library_identities, cohort_version="v44.3"
+    )
+
+    gate = evaluate_cohort_coverage_gate(
+        cohort_input, manifest, coverage_warn=0.50, coverage_fail=0.25
+    )
+    assert gate.state == "fail"
+    assert gate.resolved == 2
+    assert gate.requested == 10
+    assert abs(gate.coverage - 0.20) < 1e-9
+
+
+def test_cohort_coverage_gate_empty_input_vacuous_pass(tmp_path: Path) -> None:
+    """Empty cohort_input → coverage=1.0, state='pass' (vacuous)."""
+    from aadr_resolve.cohort import build_manifest
+    from aadr_resolve.gates import evaluate_cohort_coverage_gate
+    from aadr_resolve.library_token import build_all_library_identities
+
+    v44 = tmp_path / "v44.anno"
+    write_anno(SynthSpec(schema_class=SchemaClass.A, n_samples=10, seed=11), v44)
+    af = AnnoFrame.from_path(v44, version_label="v44.3")
+    bridge = detect_bridge([af])
+    cohort_input: dict[str, str | None] = {}
+    library_identities = build_all_library_identities([af], bridge)
+    manifest = build_manifest(
+        cohort_input, [af], bridge, library_identities, cohort_version="v44.3"
+    )
+
+    gate = evaluate_cohort_coverage_gate(
+        cohort_input, manifest, coverage_warn=0.50, coverage_fail=0.25
+    )
+    assert gate.state == "pass"
+    assert gate.coverage == 1.0
+
+
+def test_cohort_cmd_coverage_gate_exits_1_at_20pct(tmp_path: Path) -> None:
+    """End-to-end: cohort_cmd with 20% coverage raises ValidationError →
+    exit 1 with the gate message."""
+    from aadr_resolve.errors import ValidationError
+
+    v44 = tmp_path / "v44.anno"
+    write_anno(SynthSpec(schema_class=SchemaClass.A, n_samples=2, seed=11), v44)
+    cohort_file = tmp_path / "cohort.txt"
+    cohort_file.write_text(
+        "\n".join(f"Synth{i + 1:04d}" for i in range(10)) + "\n",
+        encoding="utf-8",
+    )
+    out_path = tmp_path / "manifest.tsv"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--version-label",
+            "v44.3",
+            "cohort",
+            str(cohort_file),
+            "--anno-files",
+            str(v44),
+            "-o",
+            str(out_path),
+            # Bump turnover thresholds out of the way so only the
+            # coverage gate fires (the synth pair has 0% turnover anyway
+            # since it's a single version, but be explicit).
+            "--turnover-fail",
+            "1.0",
+        ],
+        catch_exceptions=True,
+    )
+    assert isinstance(result.exception, ValidationError)
+    assert "cohort coverage gate (fail)" in str(result.exception)
+    assert "2/10" in str(result.exception)
+
+
+def test_cohort_cmd_coverage_gate_warns_at_40pct(tmp_path: Path) -> None:
+    """40% coverage emits stderr WARNING but exit 0."""
+    v44 = tmp_path / "v44.anno"
+    write_anno(SynthSpec(schema_class=SchemaClass.A, n_samples=4, seed=11), v44)
+    cohort_file = tmp_path / "cohort.txt"
+    cohort_file.write_text(
+        "\n".join(f"Synth{i + 1:04d}" for i in range(10)) + "\n",
+        encoding="utf-8",
+    )
+    out_path = tmp_path / "manifest.tsv"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--version-label",
+            "v44.3",
+            "cohort",
+            str(cohort_file),
+            "--anno-files",
+            str(v44),
+            "-o",
+            str(out_path),
+            "--turnover-fail",
+            "1.0",
+        ],
+        catch_exceptions=True,
+    )
+    assert result.exit_code == 0
+    assert "cohort coverage gate (warn)" in result.stderr
+    assert "4/10" in result.stderr

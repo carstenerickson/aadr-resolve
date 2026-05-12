@@ -11,7 +11,12 @@ from ..annoframe import AnnoFrame
 from ..bridge import detect_bridge, load_manual_bridge, merge_with_overrides
 from ..cohort import build_manifest, detect_cohort_version, parse_cohort_file
 from ..errors import UsageError, ValidationError
-from ..gates import evaluate_turnover_cohort, format_gate_message
+from ..gates import (
+    evaluate_cohort_coverage_gate,
+    evaluate_turnover_cohort,
+    format_cohort_coverage_message,
+    format_gate_message,
+)
 from ..library_token import build_all_library_identities
 from ..reporting import write_cohort_json, write_cohort_tsv
 from ..types import SchemaClass
@@ -73,8 +78,22 @@ from ..types import SchemaClass
     show_default=True,
     help="Sample-removal-rate fail threshold; exit 1 if any pair exceeds.",
 )
+@click.option(
+    "--cohort-coverage-warn",
+    type=float,
+    default=0.50,
+    show_default=True,
+    help="Stderr WARNING when resolved cohort fraction drops below this.",
+)
+@click.option(
+    "--cohort-coverage-fail",
+    type=float,
+    default=0.25,
+    show_default=True,
+    help="Exit 1 when resolved cohort fraction drops below this.",
+)
 @click.pass_context
-def cohort_cmd(
+def cohort_cmd(  # noqa: PLR0912 (orchestrator: linear setup + 2 gates × {warn,fail})
     ctx: click.Context,
     cohort_file: Path,
     anno_paths: tuple[Path, ...],
@@ -86,6 +105,8 @@ def cohort_cmd(
     gid_preference: str,
     turnover_warn: float,
     turnover_fail: float,
+    cohort_coverage_warn: float,
+    cohort_coverage_fail: float,
 ) -> None:
     """Emit a cross-version cohort manifest."""
     shared = ctx.obj["shared_opts"] if ctx.obj else {}
@@ -154,12 +175,29 @@ def cohort_cmd(
     )
     failed: list[str] = []
     for gate in gates:
+        gate_msg = format_gate_message(gate, warn_pct=turnover_warn, fail_pct=turnover_fail)
         if gate.state == "warn":
-            sys.stderr.write(
-                f"WARNING: "
-                f"{format_gate_message(gate, warn_pct=turnover_warn, fail_pct=turnover_fail)}\n"
-            )
+            sys.stderr.write(f"WARNING: {gate_msg}\n")
         elif gate.state == "fail":
-            failed.append(format_gate_message(gate, warn_pct=turnover_warn, fail_pct=turnover_fail))
+            failed.append(gate_msg)
+
+    coverage_gate = evaluate_cohort_coverage_gate(
+        cohort_input,
+        manifest,
+        bridge=bridge,
+        cohort_version=cohort_version,
+        coverage_warn=cohort_coverage_warn,
+        coverage_fail=cohort_coverage_fail,
+    )
+    coverage_msg = format_cohort_coverage_message(
+        coverage_gate,
+        warn_pct=cohort_coverage_warn,
+        fail_pct=cohort_coverage_fail,
+    )
+    if coverage_gate.state == "warn":
+        sys.stderr.write(f"WARNING: {coverage_msg}\n")
+    elif coverage_gate.state == "fail":
+        failed.append(coverage_msg)
+
     if failed:
         raise ValidationError("; ".join(failed))

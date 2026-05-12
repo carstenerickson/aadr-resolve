@@ -12,7 +12,12 @@ from ..annoframe import AnnoFrame
 from ..bridge import detect_bridge, load_manual_bridge, merge_with_overrides
 from ..diff import compute_diff
 from ..errors import ValidationError
-from ..gates import evaluate_turnover_diff, format_gate_message
+from ..gates import (
+    evaluate_substantive_regroup_gate,
+    evaluate_turnover_diff,
+    format_gate_message,
+    format_substantive_regroup_message,
+)
 from ..types import DiffResult, GroupChangeClass, SchemaClass
 
 # Stderr-warn threshold for buffered JSON size when --all-events is set.
@@ -62,6 +67,15 @@ SIZE_WARN_THRESHOLD_BYTES: int = 100 * 1024 * 1024  # 100 MB
     show_default=True,
     help="Sample-removal-rate fail threshold; exit 1 at or above.",
 )
+@click.option(
+    "--substantive-regroup-fail",
+    type=int,
+    default=None,
+    help=(
+        "Exit 1 if substantive_regroup group_id-change count exceeds this. "
+        "Default: gate disabled (opt-in for strict CI)."
+    ),
+)
 @click.pass_context
 def diff_cmd(
     ctx: click.Context,
@@ -74,6 +88,7 @@ def diff_cmd(
     all_events: bool,
     turnover_warn: float,
     turnover_fail: float,
+    substantive_regroup_fail: int | None,
 ) -> None:
     """Structured diff between two .anno files."""
     shared = ctx.obj["shared_opts"] if ctx.obj else {}
@@ -129,10 +144,20 @@ def diff_cmd(
 
     gate = evaluate_turnover_diff(result, turnover_warn=turnover_warn, turnover_fail=turnover_fail)
     msg = format_gate_message(gate, warn_pct=turnover_warn, fail_pct=turnover_fail)
+    failed: list[str] = []
     if gate.state == "warn":
         sys.stderr.write(f"WARNING: {msg}\n")
     elif gate.state == "fail":
-        raise ValidationError(msg)
+        failed.append(msg)
+
+    regroup_gate = evaluate_substantive_regroup_gate(
+        result, fail_threshold=substantive_regroup_fail
+    )
+    if regroup_gate.state == "fail":
+        failed.append(format_substantive_regroup_message(regroup_gate))
+
+    if failed:
+        raise ValidationError("; ".join(failed))
 
 
 def _format_diff_tsv(result: DiffResult) -> str:
