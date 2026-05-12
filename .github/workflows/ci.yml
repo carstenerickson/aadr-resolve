@@ -39,7 +39,7 @@ jobs:
       - name: Mypy --strict
         run: mypy src/
 
-      - name: Pytest (default: no slow/external/perf)
+      - name: "Pytest (default: no slow/external/perf)"
         run: pytest -ra
 
   slow:
