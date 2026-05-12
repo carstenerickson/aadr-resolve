@@ -125,6 +125,60 @@ class SchemaClassDef:
         return self.fields[canonical].column
 
 
+# === Day-4: MID-rename bridge types ===
+
+
+@dataclass(frozen=True, slots=True)
+class MIDRenameEvent:
+    """One detected (or manually-supplied) Master/Individual-ID rename across
+    two versions. Per LLD §2.5.
+
+    `via_genetic_id` is the shared Genetic ID that triggered the auto-detection;
+    None for manually-supplied bridge entries."""
+
+    v_old_label: str
+    mid_old: str
+    v_new_label: str
+    mid_new: str
+    via_genetic_id: str | None = None
+
+
+@dataclass
+class MIDBridge:
+    """Auto-detected MID renames + manual override entries.
+
+    O(1) cross-version canonical-id lookup via the _fwd index. The canonical
+    version is the latest version among supplied .anno files; the canonical
+    id for an individual is its MID in that latest version."""
+
+    events: list[MIDRenameEvent] = field(default_factory=list)
+    # (version_label, mid) -> canonical mid (the latest-version MID for the chain).
+    _fwd: dict[tuple[str, str], str] = field(default_factory=dict, repr=False, compare=False)
+    # canonical_mid -> set of (version_label, mid_in_that_version) pairs.
+    _rev: dict[str, set[tuple[str, str]]] = field(default_factory=dict, repr=False, compare=False)
+    canonical_version: str = ""
+
+    def canonical_id(self, version_label: str, mid: str) -> str:
+        """Translate (version_label, mid) to the canonical individual_id.
+
+        Unknown (version, mid) pairs fall through to the input mid itself —
+        the individual exists in only one supplied version and is its own
+        canonical id."""
+        return self._fwd.get((version_label, mid), mid)
+
+    def events_for(self, version_label: str, mid: str) -> list[MIDRenameEvent]:
+        """Return all rename events whose chain includes (version_label, mid).
+
+        Used by the lookup renderer to populate LookupResult.master_id_bridge."""
+        canonical = self.canonical_id(version_label, mid)
+        return [
+            e
+            for e in self.events
+            if self._fwd.get((e.v_old_label, e.mid_old)) == canonical
+            and self._fwd.get((e.v_new_label, e.mid_new)) == canonical
+        ]
+
+
 # === Day-3: lookup result types ===
 
 

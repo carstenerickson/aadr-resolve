@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from aadr_resolve.annoframe import AnnoFrame
 from aadr_resolve.types import SchemaClass
 
@@ -56,6 +58,32 @@ def test_annoframe_typed_accessors_return_copies(
     # Mutating `first` doesn't affect `second`.
     first.iloc[0] = "MUTATED"
     assert second.iloc[0] != "MUTATED"
+
+
+def test_annoframe_schema_detection_error(tmp_path: Path) -> None:
+    """HLD test 30: AnnoFrame.from_path on a .anno with unknown header signature
+    raises SchemaDetectionError carrying observed + known signatures;
+    schema_override='E' bypasses the failure."""
+    from aadr_resolve.errors import SchemaDetectionError
+
+    # Build a synthetic .anno with a totally unknown header signature.
+    bogus = tmp_path / "bogus.anno"
+    bogus.write_text(
+        "unknown_col_0\tunknown_col_1\textra_col_2\ndata0\tdata1\tdata2\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(SchemaDetectionError) as exc_info:
+        AnnoFrame.from_path(bogus)
+    err = exc_info.value
+    assert err.observed[0] == 3  # ncols
+    assert err.observed[1] == "unknown_col_0"
+    assert err.observed[2] == "unknown_col_1"
+    assert err.known  # at least one registered signature
+    assert "--schema-override" in str(err)
+
+    # schema_override='E' bypasses the dispatch check.
+    af = AnnoFrame.from_path(bogus, schema_override=SchemaClass.E)
+    assert af.schema_class == SchemaClass.E
 
 
 def test_annoframe_repr_concise(tiny_anno_paths: dict[SchemaClass, Path]) -> None:

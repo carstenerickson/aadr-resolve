@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from ..annoframe import AnnoFrame
+from ..bridge import detect_bridge, load_manual_bridge, merge_with_overrides
 from ..lookup import lookup_single
 from ..types import LookupResult, SchemaClass
 
@@ -31,6 +32,8 @@ def lookup_cmd(ctx: click.Context, query: str, anno_paths: tuple[Path, ...], as_
     schema_override_raw = shared.get("schema_override")
     schema_override = SchemaClass(schema_override_raw) if schema_override_raw else None
     version_label = shared.get("version_label")
+    mid_bridge_path = shared.get("mid_bridge_path")
+    on_mid_collision = shared.get("on_mid_collision", "error")
 
     anno_frames = [
         AnnoFrame.from_path(
@@ -41,7 +44,14 @@ def lookup_cmd(ctx: click.Context, query: str, anno_paths: tuple[Path, ...], as_
         for p in anno_paths
     ]
 
-    result = lookup_single(query, anno_frames)
+    bridge = detect_bridge(anno_frames, on_collision=on_mid_collision)
+    if mid_bridge_path is not None:
+        overrides = load_manual_bridge(mid_bridge_path)
+        bridge, warnings = merge_with_overrides(bridge, overrides)
+        for w in warnings:
+            sys.stderr.write(f"WARNING: {w}\n")
+
+    result = lookup_single(query, anno_frames, bridge=bridge)
 
     if as_json:
         json.dump(result.to_dict(), sys.stdout, indent=2)

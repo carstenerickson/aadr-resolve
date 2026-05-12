@@ -297,6 +297,119 @@ def make_uky001_v62_fixture(out_path: Path, *, schema_def: SchemaClassDef | None
     out_path.write_text("\t".join(header) + "\n" + body + "\n", encoding="utf-8")
 
 
+def make_loschbour_v54_fixture(out_path: Path, *, schema_def: SchemaClassDef | None = None) -> None:
+    """Class C (v54.1) fixture with `I0001` as the Master ID for Loschbour
+    (the pre-rename form). Includes `Loschbour_snpAD.DG` as a GID — this
+    shared GID is what links v54's I0001 to v62's Loschbour in the
+    bench-verify GID-stable detection.
+
+    HLD test 11's reference fixture for the v54.1 side of the chain."""
+    if schema_def is None:
+        schema_def = load_schema(SchemaClass.C)
+    header = _build_header(schema_def)
+    rng = random.Random(54200)
+    rows: list[list[str]] = [_synth_row(i, header, schema_def, rng) for i in range(5)]
+
+    # Override rows 0-2 to be I0001 (3 of Loschbour's libraries pre-rename).
+    libs = [
+        ("I0001", "Luxembourg_Loschbour"),
+        ("Loschbour.DG", "Luxembourg_Loschbour.DG"),
+        ("Loschbour_snpAD.DG", "Luxembourg_Loschbour.DG"),
+    ]
+    for row_idx, (gid, group) in enumerate(libs):
+        if schema_def.has_field("genetic_id"):
+            rows[row_idx][schema_def.fields["genetic_id"].column - 1] = gid
+        if schema_def.has_field("individual_id"):
+            rows[row_idx][schema_def.fields["individual_id"].column - 1] = "I0001"
+        if schema_def.has_field("group_id"):
+            rows[row_idx][schema_def.fields["group_id"].column - 1] = group
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join("\t".join(r) for r in rows)
+    out_path.write_text("\t".join(header) + "\n" + body + "\n", encoding="utf-8")
+
+
+def make_loschbour_v62_fixture(out_path: Path, *, schema_def: SchemaClassDef | None = None) -> None:
+    """Class D (v62.0) fixture with `Loschbour` as the Master ID (the
+    post-rename form). Includes `Loschbour_snpAD.DG` — the same GID present
+    in the v54 fixture, providing the bridge witness.
+
+    Paired with loschbour_v54.anno for HLD test 11."""
+    if schema_def is None:
+        schema_def = load_schema(SchemaClass.D)
+    header = _build_header(schema_def)
+    rng = random.Random(62200)
+    rows: list[list[str]] = [_synth_row(i, header, schema_def, rng) for i in range(5)]
+
+    libs = [
+        ("I0001.AG", "Luxembourg_Mesolithic.AG"),
+        ("Loschbour.DG", "Luxembourg_Mesolithic.DG"),
+        ("Loschbour_snpAD.DG", "Luxembourg_Mesolithic.DG"),
+    ]
+    for row_idx, (gid, group) in enumerate(libs):
+        if schema_def.has_field("genetic_id"):
+            rows[row_idx][schema_def.fields["genetic_id"].column - 1] = gid
+        if schema_def.has_field("individual_id"):
+            rows[row_idx][schema_def.fields["individual_id"].column - 1] = "Loschbour"
+        if schema_def.has_field("group_id"):
+            rows[row_idx][schema_def.fields["group_id"].column - 1] = group
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join("\t".join(r) for r in rows)
+    out_path.write_text("\t".join(header) + "\n" + body + "\n", encoding="utf-8")
+
+
+def make_collision_v_old_fixture(
+    out_path: Path, *, schema_def: SchemaClassDef | None = None
+) -> None:
+    """Class C fixture for the cross-lab MID-collision case (HLD test 12).
+
+    Contains one IID `MID-A` with two shared GIDs (`SAMPLE-X.AG`,
+    `SAMPLE-Y.AG`). Paired with collision_v_new.anno which assigns the
+    same two GIDs to DIFFERENT IIDs (MID-B and MID-C respectively),
+    triggering CollisionDetected during detect_bridge."""
+    if schema_def is None:
+        schema_def = load_schema(SchemaClass.C)
+    header = _build_header(schema_def)
+    rng = random.Random(99001)
+    rows: list[list[str]] = [_synth_row(i, header, schema_def, rng) for i in range(3)]
+
+    for row_idx, gid in enumerate(["SAMPLE-X.AG", "SAMPLE-Y.AG"]):
+        if schema_def.has_field("genetic_id"):
+            rows[row_idx][schema_def.fields["genetic_id"].column - 1] = gid
+        if schema_def.has_field("individual_id"):
+            rows[row_idx][schema_def.fields["individual_id"].column - 1] = "MID-A"
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join("\t".join(r) for r in rows)
+    out_path.write_text("\t".join(header) + "\n" + body + "\n", encoding="utf-8")
+
+
+def make_collision_v_new_fixture(
+    out_path: Path, *, schema_def: SchemaClassDef | None = None
+) -> None:
+    """Class D fixture pairing with collision_v_old.anno. Reassigns the
+    two shared GIDs to DIFFERENT IIDs: SAMPLE-X.AG -> MID-B, SAMPLE-Y.AG
+    -> MID-C. Triggers CollisionDetected when paired with the v_old
+    fixture and on_collision='error'."""
+    if schema_def is None:
+        schema_def = load_schema(SchemaClass.D)
+    header = _build_header(schema_def)
+    rng = random.Random(99002)
+    rows: list[list[str]] = [_synth_row(i, header, schema_def, rng) for i in range(3)]
+
+    cases = [("SAMPLE-X.AG", "MID-B"), ("SAMPLE-Y.AG", "MID-C")]
+    for row_idx, (gid, iid) in enumerate(cases):
+        if schema_def.has_field("genetic_id"):
+            rows[row_idx][schema_def.fields["genetic_id"].column - 1] = gid
+        if schema_def.has_field("individual_id"):
+            rows[row_idx][schema_def.fields["individual_id"].column - 1] = iid
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join("\t".join(r) for r in rows)
+    out_path.write_text("\t".join(header) + "\n" + body + "\n", encoding="utf-8")
+
+
 def _cli() -> None:
     parser = argparse.ArgumentParser(description="Regenerate the committed mini-.anno fixtures.")
     parser.add_argument(
@@ -330,6 +443,10 @@ def _cli() -> None:
             (args.out_dir / "v52_encoding_artifact.anno", make_v52_encoding_artifact_fixture),
             (args.out_dir / "loschbour_v66.anno", make_loschbour_v66_fixture),
             (args.out_dir / "uky001_v62.anno", make_uky001_v62_fixture),
+            (args.out_dir / "loschbour_v54.anno", make_loschbour_v54_fixture),
+            (args.out_dir / "loschbour_v62.anno", make_loschbour_v62_fixture),
+            (args.out_dir / "collision_v_old.anno", make_collision_v_old_fixture),
+            (args.out_dir / "collision_v_new.anno", make_collision_v_new_fixture),
         ]
         for out_path, fn in regression_paths:
             fn(out_path)
