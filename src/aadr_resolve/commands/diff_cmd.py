@@ -11,7 +11,12 @@ import click
 
 from ..annoframe import AnnoFrame
 from ..bridge import detect_bridge, load_manual_bridge, merge_with_overrides
-from ..diff import build_diff_run_summary, compute_diff
+from ..diff import (
+    DIFF_REPORT_FIELDNAMES,
+    build_diff_run_summary,
+    compute_diff,
+    iter_report_rows,
+)
 from ..errors import ValidationError
 from ..gates import (
     evaluate_substantive_regroup_gate,
@@ -19,7 +24,7 @@ from ..gates import (
     format_gate_message,
     format_substantive_regroup_message,
 )
-from ..reporting import format_stdout_summary, write_report_json_summary
+from ..reporting import format_stdout_summary, write_report_json_summary, write_report_tsv
 from ..types import DiffResult, GroupChangeClass, SchemaClass
 
 # Stderr-warn threshold for buffered JSON size when --all-events is set.
@@ -88,6 +93,16 @@ SIZE_WARN_THRESHOLD_BYTES: int = 100 * 1024 * 1024  # 100 MB
         "loadable via json.load by CI dashboards + sibling tools)."
     ),
 )
+@click.option(
+    "--report",
+    "report_tsv_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Write a per-event TSV sidecar to PATH (streamed, constant memory; "
+        "preferred over --all-events at AADR scale)."
+    ),
+)
 @click.pass_context
 def diff_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: tsv/json + 2 gates + summary)
     ctx: click.Context,
@@ -102,6 +117,7 @@ def diff_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: tsv/json + 2 gates + summa
     turnover_fail: float,
     substantive_regroup_fail: int | None,
     report_json_path: Path | None,
+    report_tsv_path: Path | None,
 ) -> None:
     """Structured diff between two .anno files."""
     shared = ctx.obj["shared_opts"] if ctx.obj else {}
@@ -202,6 +218,11 @@ def diff_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: tsv/json + 2 gates + summa
         },
     )
 
+    if report_tsv_path is not None:
+        write_report_tsv(
+            iter_report_rows(result), report_tsv_path, fieldnames=DIFF_REPORT_FIELDNAMES
+        )
+
     if report_json_path is not None:
         write_report_json_summary(summary, report_json_path)
 
@@ -220,19 +241,13 @@ def diff_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: tsv/json + 2 gates + summa
 
 
 def _format_diff_tsv(result: DiffResult) -> str:
-    """One row per change event (per HLD §Output: diff TSV mode)."""
-    lines: list[str] = ["event_class\tindividual_id\tdetails"]
-    for events in (
-        result.added,
-        result.removed,
-        result.genetic_id_renamed,
-        result.master_id_renamed,
-    ):
-        for e in events:
-            lines.append(f"{e.event_class}\t{e.individual_id_canonical}\t{json.dumps(e.details)}")
-    for cls, events in result.group_changed_by_class.items():
-        for e in events:
-            lines.append(
-                f"group_changed:{cls.value}\t{e.individual_id_canonical}\t{json.dumps(e.details)}"
-            )
+    """One row per change event (per HLD §Output: diff TSV mode).
+
+    Builds the full TSV string in memory. The `--report PATH` flag is
+    the streamed sidecar variant — see `reporting.write_report_tsv`
+    + `diff.iter_report_rows`. This in-memory helper exists because
+    `--tsv` may go to stdout, where streaming wouldn't help."""
+    lines: list[str] = ["\t".join(DIFF_REPORT_FIELDNAMES)]
+    for row in iter_report_rows(result):
+        lines.append("\t".join(row[col] for col in DIFF_REPORT_FIELDNAMES))
     return "\n".join(lines) + "\n"

@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter
+from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 
 from .annoframe import AnnoFrame
 from .gates import SubstantiveRegroupGateResult, TurnoverGateResult
@@ -16,6 +19,54 @@ from .types import (
     GroupChangeClass,
     MIDBridge,
 )
+
+# Field order for the --report TSV sidecar + the inline --tsv mode.
+# Per HLD §Output: diff TSV mode.
+DIFF_REPORT_FIELDNAMES: list[str] = ["event_class", "individual_id", "details"]
+
+
+def iter_report_rows(result: DiffResult) -> Iterator[dict[str, Any]]:
+    """Yield one report row per diff event, in stable order.
+
+    Generator-based so the caller (e.g. `reporting.write_report_tsv`)
+    can stream to disk with constant memory regardless of event count.
+
+    Row shape: `{"event_class": str, "individual_id": str, "details":
+    json-encoded str}`. The `event_class` for group_changed rows uses
+    the LLD §Output: diff TSV mode form `group_changed:{class_value}`
+    so a downstream tool can split on `:` to separate the bucket from
+    its class label."""
+    for event in result.added:
+        yield {
+            "event_class": event.event_class,
+            "individual_id": event.individual_id_canonical,
+            "details": json.dumps(event.details),
+        }
+    for event in result.removed:
+        yield {
+            "event_class": event.event_class,
+            "individual_id": event.individual_id_canonical,
+            "details": json.dumps(event.details),
+        }
+    for event in result.genetic_id_renamed:
+        yield {
+            "event_class": event.event_class,
+            "individual_id": event.individual_id_canonical,
+            "details": json.dumps(event.details),
+        }
+    for event in result.master_id_renamed:
+        yield {
+            "event_class": event.event_class,
+            "individual_id": event.individual_id_canonical,
+            "details": json.dumps(event.details),
+        }
+    for cls, events in result.group_changed_by_class.items():
+        for event in events:
+            yield {
+                "event_class": f"group_changed:{cls.value}",
+                "individual_id": event.individual_id_canonical,
+                "details": json.dumps(event.details),
+            }
 
 
 def compute_diff(

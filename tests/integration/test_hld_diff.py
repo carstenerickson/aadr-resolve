@@ -592,3 +592,128 @@ def test_diff_report_json_gate_fail_echoed(fixtures_dir: Path, tmp_path: Path) -
     payload = json.loads(report_path.read_text(encoding="utf-8"))
     assert payload["gates"]["substantive_regroup"] == "fail"
     assert payload["gates"]["substantive_regroup_count"] >= 1
+
+
+# === v0.2 A3: --report PATH per-row TSV streaming ===
+
+
+def test_diff_report_tsv_writes_one_row_per_event(fixtures_dir: Path, tmp_path: Path) -> None:
+    """`diff --report PATH` writes a TSV with one row per change event.
+    Header is the LLD-pinned 3-column shape: event_class, individual_id,
+    details."""
+    out_path = tmp_path / "diff.json"
+    report_tsv = tmp_path / "report.tsv"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--quiet",
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "-o",
+            str(out_path),
+            "--report",
+            str(report_tsv),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert report_tsv.exists()
+
+    lines = report_tsv.read_text(encoding="utf-8").splitlines()
+    header = lines[0].split("\t")
+    assert header == ["event_class", "individual_id", "details"]
+
+    # Row count equals total event count from the same diff via library API.
+    af_v54 = AnnoFrame.from_path(fixtures_dir / "loschbour_v54.anno", version_label="v54.1")
+    af_v62 = AnnoFrame.from_path(fixtures_dir / "loschbour_v62.anno", version_label="v62.0")
+    bridge = detect_bridge([af_v54, af_v62])
+    diff_result = compute_diff(af_v54, af_v62, bridge=bridge)
+    expected = (
+        len(diff_result.added)
+        + len(diff_result.removed)
+        + len(diff_result.genetic_id_renamed)
+        + len(diff_result.master_id_renamed)
+        + sum(len(v) for v in diff_result.group_changed_by_class.values())
+    )
+    assert len(lines) - 1 == expected, f"expected {expected} event rows, got {len(lines) - 1}"
+
+
+def test_diff_report_tsv_alongside_json_main(fixtures_dir: Path, tmp_path: Path) -> None:
+    """`--report` is a SIDECAR — it works alongside the default JSON
+    output to `-o PATH`. Both files are present after the run."""
+    out_json = tmp_path / "diff.json"
+    report_tsv = tmp_path / "report.tsv"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--quiet",
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "-o",
+            str(out_json),
+            "--report",
+            str(report_tsv),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    # Primary JSON output is valid JSON.
+    primary = json.loads(out_json.read_text(encoding="utf-8"))
+    assert "v_old" in primary
+    # Sidecar TSV has the expected header.
+    assert "event_class\tindividual_id\tdetails" in report_tsv.read_text(encoding="utf-8")
+
+
+def test_diff_report_tsv_group_changed_rows_carry_class(fixtures_dir: Path, tmp_path: Path) -> None:
+    """group_changed rows use 'group_changed:{class_value}' as the
+    event_class column so consumers can split on ':' to recover the
+    classification bucket."""
+    out_json = tmp_path / "diff.json"
+    report_tsv = tmp_path / "report.tsv"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--quiet",
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "-o",
+            str(out_json),
+            "--report",
+            str(report_tsv),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    text = report_tsv.read_text(encoding="utf-8")
+    # At least one group_changed row exists in the Loschbour fixture
+    # (Luxembourg_Loschbour → Luxembourg_Mesolithic).
+    group_lines = [line for line in text.splitlines() if line.startswith("group_changed:")]
+    assert group_lines, "expected at least one group_changed row in the report TSV"
+    # Each group_changed row's event_class names a valid class.
+    valid_class_tags = {f"group_changed:{c.value}" for c in GroupChangeClass}
+    for line in group_lines:
+        tag = line.split("\t")[0]
+        assert tag in valid_class_tags, f"unknown group_changed class tag: {tag}"
+
+
+def test_diff_iter_report_rows_lazy(fixtures_dir: Path) -> None:
+    """diff.iter_report_rows is a generator — first row is available
+    without realizing the whole iterable."""
+    from collections.abc import Iterator
+
+    from aadr_resolve.diff import iter_report_rows
+
+    af_v54 = AnnoFrame.from_path(fixtures_dir / "loschbour_v54.anno", version_label="v54.1")
+    af_v62 = AnnoFrame.from_path(fixtures_dir / "loschbour_v62.anno", version_label="v62.0")
+    bridge = detect_bridge([af_v54, af_v62])
+    diff_result = compute_diff(af_v54, af_v62, bridge=bridge)
+    it = iter_report_rows(diff_result)
+    assert isinstance(it, Iterator)
+    first = next(it)
+    assert set(first.keys()) == {"event_class", "individual_id", "details"}

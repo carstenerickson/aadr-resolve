@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
@@ -100,6 +102,33 @@ def write_cohort_json(manifest: CohortManifest, path: Path) -> None:
             }
         )
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def write_report_tsv(
+    rows: Iterable[dict[str, Any]],
+    path: Path,
+    *,
+    fieldnames: list[str],
+) -> None:
+    """Stream per-event TSV to `path` via csv.DictWriter.
+
+    Constant memory regardless of event count — `rows` is consumed
+    lazily (e.g. as the generator from `diff.iter_report_rows`). Caller
+    supplies `fieldnames`; missing keys are blank, extra keys are
+    ignored. Tab-delimited; no quoting (matches diff --tsv inline)."""
+    with path.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(
+            f,
+            fieldnames=fieldnames,
+            delimiter="\t",
+            lineterminator="\n",
+            quoting=csv.QUOTE_NONE,
+            escapechar="\\",
+            extrasaction="ignore",
+        )
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
 
 
 def write_report_json_summary(summary: CohortRunSummary | DiffRunSummary, path: Path) -> None:
