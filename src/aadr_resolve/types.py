@@ -33,6 +33,20 @@ class ExitCode(IntEnum):
     USAGE_ERROR = 4
 
 
+class GroupChangeClass(Enum):
+    """Six-class classifier for Group ID changes (HLD §Group ID change classifier).
+
+    Order matters: walked top-to-bottom by classify_group_change; first match
+    wins."""
+
+    CONVENTION_RESTRUCTURE_SUFFIX = "convention_restructure_suffix"
+    CONVENTION_RESTRUCTURE_COUNTRY = "convention_restructure_country"
+    CONVENTION_RESTRUCTURE_ORDER = "convention_restructure_order"
+    CONVENTION_RESTRUCTURE_PUNCT = "convention_restructure_punct"
+    PARTIAL = "partial"
+    SUBSTANTIVE_REGROUP = "substantive_regroup"
+
+
 @dataclass(frozen=True, slots=True)
 class FieldMapping:
     """One canonical field's location within a schema class.
@@ -177,6 +191,119 @@ class MIDBridge:
             if self._fwd.get((e.v_old_label, e.mid_old)) == canonical
             and self._fwd.get((e.v_new_label, e.mid_new)) == canonical
         ]
+
+
+# === Day-5: diff result types ===
+
+
+@dataclass(frozen=True, slots=True)
+class DiffEvent:
+    """One change event between two versions.
+
+    Per LLD §2.7. `details` payload varies by event_class:
+      - 'added' / 'removed': {'first_seen_genetic_id' / 'last_seen_genetic_id': str}
+      - 'genetic_id_renamed': {'v_old_gids': list[str], 'v_new_gids': list[str]}
+      - 'master_id_renamed': {'v_old_mid': str, 'v_new_mid': str, 'via_genetic_id': str}
+      - 'group_changed': {'group_v_old': str, 'group_v_new': str,
+                          'change_class': GroupChangeClass.value}"""
+
+    event_class: Literal[
+        "added", "removed", "genetic_id_renamed", "master_id_renamed", "group_changed"
+    ]
+    individual_id_canonical: str
+    details: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class DiffResult:
+    """Structured cross-version diff (HLD §Output: diff)."""
+
+    v_old_label: str
+    v_old_class: SchemaClass
+    v_old_n_individuals: int
+    v_new_label: str
+    v_new_class: SchemaClass
+    v_new_n_individuals: int
+    shared_individuals: int
+
+    added: list[DiffEvent] = field(default_factory=list)
+    removed: list[DiffEvent] = field(default_factory=list)
+    genetic_id_renamed: list[DiffEvent] = field(default_factory=list)
+    master_id_renamed: list[DiffEvent] = field(default_factory=list)
+    group_changed_by_class: dict[GroupChangeClass, list[DiffEvent]] = field(
+        default_factory=lambda: {c: [] for c in GroupChangeClass}
+    )
+    gates: dict[str, bool | str] = field(default_factory=dict)
+
+    @property
+    def removal_rate(self) -> float:
+        if self.v_old_n_individuals == 0:
+            return 0.0
+        return len(self.removed) / self.v_old_n_individuals
+
+    def summary_line(self) -> str:
+        """One-line human-readable summary."""
+        substantive = len(self.group_changed_by_class.get(GroupChangeClass.SUBSTANTIVE_REGROUP, []))
+        return (
+            f"{self.v_old_label} -> {self.v_new_label}: "
+            f"{len(self.added)} added, "
+            f"{len(self.removed)} removed ({100 * self.removal_rate:.1f}% of {self.v_old_label}); "
+            f"{len(self.genetic_id_renamed)} GID renames; "
+            f"{len(self.master_id_renamed)} MID renames; "
+            f"{substantive} substantive Group ID regroupings."
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-serializable summary view (no full event arrays — Day-7 adds
+        per-class event opt-in via --include-class / --all-events)."""
+        return {
+            "v_old": self.v_old_label,
+            "v_old_class": self.v_old_class.value,
+            "v_old_n_individuals": self.v_old_n_individuals,
+            "v_new": self.v_new_label,
+            "v_new_class": self.v_new_class.value,
+            "v_new_n_individuals": self.v_new_n_individuals,
+            "shared_individuals": self.shared_individuals,
+            "added": {"count": len(self.added), "rate": self._added_rate()},
+            "removed": {"count": len(self.removed), "rate": self.removal_rate},
+            "genetic_id_renamed": {"count": len(self.genetic_id_renamed)},
+            "master_id_renamed": {
+                "count": len(self.master_id_renamed),
+                "events": [
+                    {
+                        "v_old_mid": e.details.get("v_old_mid"),
+                        "v_new_mid": e.details.get("v_new_mid"),
+                        "via_genetic_id": e.details.get("via_genetic_id"),
+                    }
+                    for e in self.master_id_renamed
+                ],
+            },
+            "group_changed": {
+                "count": sum(len(v) for v in self.group_changed_by_class.values()),
+                "by_class": {
+                    cls.value: len(self.group_changed_by_class.get(cls, []))
+                    for cls in GroupChangeClass
+                },
+                # Substantive_regroup events are always included (small list).
+                "events_substantive_regroup": [
+                    {
+                        "individual_id": e.individual_id_canonical,
+                        "group_v_old": e.details.get("group_v_old"),
+                        "group_v_new": e.details.get("group_v_new"),
+                    }
+                    for e in self.group_changed_by_class.get(
+                        GroupChangeClass.SUBSTANTIVE_REGROUP, []
+                    )
+                ],
+            },
+            "gates": dict(self.gates),
+            "summary": self.summary_line(),
+        }
+
+    def _added_rate(self) -> float:
+        if self.v_new_n_individuals == 0:
+            return 0.0
+        return len(self.added) / self.v_new_n_individuals
 
 
 # === Day-3: lookup result types ===
