@@ -105,6 +105,7 @@ def read_anno(
         schema_class=schema_def.class_id,
         schema_def=schema_def,
         df=df,
+        path=path,
     )
 
 

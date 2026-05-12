@@ -27,6 +27,11 @@ class AnnoFrame:
     schema_class: SchemaClass  # detected or override
     schema_def: SchemaClassDef  # loaded YAML for the class
     df: pd.DataFrame  # raw string-dtype cells, indexed 0..n_rows-1
+    # Original .anno path the loader read from. None when constructed
+    # directly (tests, in-memory cases). Day-6 addition so sibling tools
+    # (e.g., aadr-subset) can call resolve_master_ids without re-tracking
+    # paths separately.
+    path: Path | None = field(default=None, compare=False)
     # Day-2 caches; declared here so the dataclass shape is stable.
     _date_calbp_cache: pd.Series | None = field(default=None, repr=False, compare=False)
     _coverage_cache: dict[str, pd.Series] = field(default_factory=dict, repr=False, compare=False)

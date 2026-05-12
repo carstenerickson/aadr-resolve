@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from . import __version__
+from .commands.cohort_cmd import cohort_cmd
 from .commands.diff_cmd import diff_cmd
 from .commands.lookup_cmd import lookup_cmd
 from .commands.schema_cmd import schema_cmd
@@ -52,6 +53,7 @@ def cli(ctx: click.Context, /, **shared_opts: object) -> None:
     ctx.obj["shared_opts"] = shared_opts
 
 
+cli.add_command(cohort_cmd, name="cohort")
 cli.add_command(diff_cmd, name="diff")
 cli.add_command(lookup_cmd, name="lookup")
 cli.add_command(schema_cmd, name="schema")

@@ -306,6 +306,68 @@ class DiffResult:
         return len(self.added) / self.v_new_n_individuals
 
 
+# === Day-6: library-token + cohort manifest types ===
+
+
+@dataclass(frozen=True, slots=True)
+class LibraryToken:
+    """One library's identity across versions. Per LLD §2.6.
+
+    `token` is the most-recent-version's full GID for the chain (post-v0.5
+    HLD pin: full GID not stem, since stems collide between suffix classes).
+    For Loschbour's snpAD library (dropped before v66), token =
+    'Loschbour_snpAD.DG' (the latest version where it appears)."""
+
+    token: str
+    per_version_gid: dict[str, str | None]  # version_label -> GID or None
+    chain_status: Literal["chained", "orphan", "ambiguous"] = "orphan"
+
+
+@dataclass(frozen=True, slots=True)
+class LibraryIdentityResult:
+    """All library tokens for one individual_id_canonical."""
+
+    individual_id_canonical: str
+    libraries: tuple[LibraryToken, ...]
+    has_ambiguous: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ManifestRow:
+    """One row in the cohort manifest: one library of one individual.
+
+    Per LLD §2.8. Per-version fields are dicts keyed by version_label rather
+    than separate fields, so the dataclass shape stays stable as the user
+    supplies different version sets across invocations."""
+
+    cohort_label: str
+    cohort_label_source: str  # 'direct' or 'inferred_from_v44_3' etc.
+    individual_id_canonical: str
+    library_token: str
+    per_version_gid: dict[str, str | None]
+    per_version_group_id: dict[str, str | None]
+    per_version_snps_hit_1240k: dict[str, int | None]
+    persistent_genetic_id: int | None  # latest E-class PGID; None for non-E libraries
+    status: str
+
+
+@dataclass
+class CohortManifest:
+    """All rows + run metadata for a cohort run."""
+
+    versions_supplied: tuple[str, ...]
+    rows: tuple[ManifestRow, ...]
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+
+    @property
+    def n_individuals(self) -> int:
+        return len({r.individual_id_canonical for r in self.rows})
+
+    @property
+    def n_libraries(self) -> int:
+        return len(self.rows)
+
+
 # === Day-3: lookup result types ===
 
 
