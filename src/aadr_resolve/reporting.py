@@ -20,6 +20,9 @@ def write_cohort_tsv(manifest: CohortManifest, path: Path) -> None:
       library_token,
       then per-version columns in user-supplied order:
         v{X}_genetic_id, v{X}_group_id, v{X}_snps_hit_1240k,
+      then per-adjacent-pair columns:
+        group_id_change_class_v_{old}_to_v_{new}
+        (one per consecutive pair; LLD §4.1 step 11d),
       then v{LATEST}_persistent_genetic_id (when latest is class E),
       then status.
 
@@ -36,6 +39,11 @@ def write_cohort_tsv(manifest: CohortManifest, path: Path) -> None:
         columns.append(f"{prefix}_genetic_id")
         columns.append(f"{prefix}_group_id")
         columns.append(f"{prefix}_snps_hit_1240k")
+    pair_keys: list[tuple[str, str]] = []
+    for i in range(len(versions) - 1):
+        v_old, v_new = versions[i], versions[i + 1]
+        pair_keys.append((v_old, v_new))
+        columns.append(f"group_id_change_class_{_column_prefix(v_old)}_to_{_column_prefix(v_new)}")
     # PGID only emitted if at least one row has one populated.
     has_pgid = any(r.persistent_genetic_id is not None for r in manifest.rows)
     if has_pgid:
@@ -54,6 +62,8 @@ def write_cohort_tsv(manifest: CohortManifest, path: Path) -> None:
             cells.append(_cell(row.per_version_gid.get(v)))
             cells.append(_cell(row.per_version_group_id.get(v)))
             cells.append(_cell(row.per_version_snps_hit_1240k.get(v)))
+        for pair in pair_keys:
+            cells.append(_cell(row.per_pair_group_change_class.get(pair)))
         if has_pgid:
             cells.append(_cell(row.persistent_genetic_id))
         cells.append(row.status)
@@ -69,6 +79,12 @@ def write_cohort_json(manifest: CohortManifest, path: Path) -> None:
     optimizes for human readability; JSON for tool consumption)."""
     payload: list[dict[str, Any]] = []
     for row in manifest.rows:
+        # JSON keys can't be tuples; render per-pair keys as
+        # "{v_old}__to__{v_new}" strings (double-underscore separator).
+        per_pair_str: dict[str, str | None] = {
+            f"{v_old}__to__{v_new}": cls
+            for (v_old, v_new), cls in row.per_pair_group_change_class.items()
+        }
         payload.append(
             {
                 "cohort_label": row.cohort_label,
@@ -78,6 +94,7 @@ def write_cohort_json(manifest: CohortManifest, path: Path) -> None:
                 "per_version_gid": row.per_version_gid,
                 "per_version_group_id": row.per_version_group_id,
                 "per_version_snps_hit_1240k": row.per_version_snps_hit_1240k,
+                "per_pair_group_change_class": per_pair_str,
                 "persistent_genetic_id": row.persistent_genetic_id,
                 "status": row.status,
             }

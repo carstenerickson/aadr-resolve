@@ -306,3 +306,122 @@ def test_cohort_json_round_trip(fixtures_dir: Path, tmp_path: Path) -> None:
     assert isinstance(payload, list)
     assert all("library_token" in r for r in payload)
     assert all("per_version_gid" in r for r in payload)
+
+
+# === v0.2 A4: per-pair group_id_change_class ===
+
+
+def test_per_pair_change_class_tsv_columns(fixtures_dir: Path, tmp_path: Path) -> None:
+    """TSV header carries one group_id_change_class column per adjacent
+    pair in versions_supplied. For Loschbour v54+v62+v66 that's two
+    columns: v54_1_to_v62_0 and v62_0_to_v66_0."""
+    afs, bridge = _load_loschbour_pair(fixtures_dir)
+    identities = build_all_library_identities(afs, bridge)
+    manifest = build_manifest(
+        {"Loschbour": "Loschbour"}, afs, bridge, identities, cohort_version="v66.0"
+    )
+    out = tmp_path / "manifest.tsv"
+    write_cohort_tsv(manifest, out)
+    header = out.read_text(encoding="utf-8").splitlines()[0].split("\t")
+    assert "group_id_change_class_v54_1_to_v62_0" in header
+    assert "group_id_change_class_v62_0_to_v66_0" in header
+
+
+def test_per_pair_change_class_loschbour_v54_to_v62_classified(fixtures_dir: Path) -> None:
+    """Loschbour's Luxembourg_Loschbour → Luxembourg_Mesolithic.AG change
+    between v54 and v62 must classify into one of the six classes (not
+    'none', not None), because the group_id IS changing."""
+    afs, bridge = _load_loschbour_pair(fixtures_dir)
+    identities = build_all_library_identities(afs, bridge)
+    manifest = build_manifest(
+        {"Loschbour": "Loschbour"}, afs, bridge, identities, cohort_version="v66.0"
+    )
+    loschbour_rows = [r for r in manifest.rows if r.individual_id_canonical == "Loschbour"]
+    assert loschbour_rows, "no Loschbour row in manifest"
+    # At least one Loschbour row should carry a non-trivial classification.
+    classifications = {
+        r.per_pair_group_change_class.get(("v54.1", "v62.0")) for r in loschbour_rows
+    }
+    # Group changed: must not be 'none' or None for at least one library.
+    assert any(c not in (None, "none") for c in classifications), (
+        f"expected at least one Loschbour library to have a real "
+        f"group_id_change_class for v54→v62; got {classifications}"
+    )
+
+
+def test_per_pair_change_class_unchanged_group_is_none_string(
+    fixtures_dir: Path, tmp_path: Path
+) -> None:
+    """When the group_id is identical across adjacent versions, the
+    per-pair value is the string 'none' (not None — None means 'one side
+    of the pair is missing the individual')."""
+    afs, bridge = _load_loschbour_pair(fixtures_dir)
+    identities = build_all_library_identities(afs, bridge)
+    # Include the synth fillers; they have stable group_id across v62+v66
+    # (Synth_Test_Population), so their v62→v66 pair must be 'none'.
+    manifest = build_manifest(
+        {
+            "Loschbour": "Loschbour",
+            "Synth0004": "Synth0004",
+            "Synth0005": "Synth0005",
+        },
+        afs,
+        bridge,
+        identities,
+        cohort_version="v66.0",
+    )
+    # Find a synth filler row that's present in both v62 and v66 with the
+    # same group_id (synth uses a deterministic 2-population pool; same
+    # IID → same group_id across both class-D and class-E synth runs).
+    for row in manifest.rows:
+        v62 = row.per_version_group_id.get("v62.0")
+        v66 = row.per_version_group_id.get("v66.0")
+        if v62 is not None and v66 is not None and v62 == v66:
+            assert row.per_pair_group_change_class.get(("v62.0", "v66.0")) == "none"
+            return
+    # If no row qualifies, at least confirm the class is callable; this
+    # is a deeply unlikely path for synth fixtures.
+    pytest.skip("no row with stable group_id across v62+v66 in fixtures")
+
+
+def test_per_pair_change_class_missing_version_is_none(fixtures_dir: Path) -> None:
+    """When the individual is absent in one side of an adjacent pair, the
+    per-pair value is None (not a string)."""
+    afs, bridge = _load_loschbour_pair(fixtures_dir)
+    identities = build_all_library_identities(afs, bridge)
+    manifest = build_manifest(
+        {"Loschbour": "Loschbour"}, afs, bridge, identities, cohort_version="v66.0"
+    )
+    # Loschbour's snpAD.DG library is present in v54 + v62 but absent in
+    # v66 (the snpAD library was retired between v62 and v66). That row's
+    # v62→v66 pair should be None on the change-class column.
+    snpad_rows = [
+        r
+        for r in manifest.rows
+        if r.individual_id_canonical == "Loschbour" and "snpAD" in r.library_token
+    ]
+    if not snpad_rows:
+        pytest.skip("no snpAD library row found; fixture composition differs")
+    row = snpad_rows[0]
+    # v66 should have None group_id (library retired), so v62→v66 must be None.
+    assert row.per_version_group_id.get("v66.0") is None
+    assert row.per_pair_group_change_class.get(("v62.0", "v66.0")) is None
+
+
+def test_per_pair_change_class_json_keys_stringified(fixtures_dir: Path, tmp_path: Path) -> None:
+    """JSON output renders per-pair keys as '{v_old}__to__{v_new}' since
+    JSON keys can't be tuples."""
+    afs, bridge = _load_loschbour_pair(fixtures_dir)
+    identities = build_all_library_identities(afs, bridge)
+    manifest = build_manifest(
+        {"Loschbour": "Loschbour"}, afs, bridge, identities, cohort_version="v66.0"
+    )
+    out = tmp_path / "manifest.json"
+    write_cohort_json(manifest, out)
+    payload = json.loads(out.read_text())
+    assert payload, "empty manifest JSON"
+    first = payload[0]
+    assert "per_pair_group_change_class" in first
+    keys = set(first["per_pair_group_change_class"].keys())
+    assert "v54.1__to__v62.0" in keys
+    assert "v62.0__to__v66.0" in keys

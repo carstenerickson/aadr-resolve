@@ -421,7 +421,14 @@ class ManifestRow:
 
     Per LLD §2.8. Per-version fields are dicts keyed by version_label rather
     than separate fields, so the dataclass shape stays stable as the user
-    supplies different version sets across invocations."""
+    supplies different version sets across invocations.
+
+    `per_pair_group_change_class` carries the LLD §4.1 step-11d per-adjacent-
+    version-pair `group_id_change_class` value for this individual. Keys are
+    `(v_old, v_new)` tuples for each consecutive pair in versions_supplied;
+    values are one of the six GroupChangeClass values, the string 'none' for
+    unchanged group_ids, or None when the individual is absent from either
+    side of the pair."""
 
     cohort_label: str
     cohort_label_source: str  # 'direct' or 'inferred_from_v44_3' etc.
@@ -432,6 +439,7 @@ class ManifestRow:
     per_version_snps_hit_1240k: dict[str, int | None]
     persistent_genetic_id: int | None  # latest E-class PGID; None for non-E libraries
     status: str
+    per_pair_group_change_class: dict[tuple[str, str], str | None] = field(default_factory=dict)
 
 
 @dataclass

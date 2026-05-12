@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from itertools import pairwise
 from pathlib import Path
 
 import pandas as pd
@@ -10,6 +11,7 @@ import pandas as pd
 from .annoframe import AnnoFrame
 from .date_norm import to_int64_nullable
 from .errors import IOFailure, UsageError
+from .group_classifier import classify_group_change
 from .library_token import collapse_to_individual, version_tuple
 from .types import (
     CohortManifest,
@@ -310,6 +312,7 @@ def _row_from_library(
                 pgid_latest_e = pgid
 
     status = _row_status(per_version_gid, library_token.chain_status, sorted_afs)
+    per_pair_change_class = _compute_per_pair_change_class(per_version_group_id, sorted_afs)
 
     return ManifestRow(
         cohort_label=cohort_label,
@@ -321,6 +324,7 @@ def _row_from_library(
         per_version_snps_hit_1240k=per_version_snps_hit,
         persistent_genetic_id=pgid_latest_e,
         status=status,
+        per_pair_group_change_class=per_pair_change_class,
     )
 
 
@@ -355,6 +359,7 @@ def _row_from_collapsed(
     token = canonical_id
 
     status = _row_status(chosen_gid_per_version, "chained", sorted_afs)
+    per_pair_change_class = _compute_per_pair_change_class(per_version_group_id, sorted_afs)
 
     return ManifestRow(
         cohort_label=cohort_label,
@@ -366,6 +371,7 @@ def _row_from_collapsed(
         per_version_snps_hit_1240k=per_version_snps_hit,
         persistent_genetic_id=pgid_latest_e,
         status=status,
+        per_pair_group_change_class=per_pair_change_class,
     )
 
 
@@ -377,6 +383,11 @@ def _placeholder_row(
 ) -> ManifestRow:
     """A row for an individual not present in any supplied .anno."""
     nulls: dict[str, str | None] = {v: None for v in versions}
+    # Placeholder rows have no group_id in any version → every adjacent
+    # pair gets a None classification.
+    per_pair_change_class: dict[tuple[str, str], str | None] = {
+        pair: None for pair in pairwise(versions)
+    }
     return ManifestRow(
         cohort_label=cohort_label,
         cohort_label_source=cohort_label_source,
@@ -387,7 +398,36 @@ def _placeholder_row(
         per_version_snps_hit_1240k={v: None for v in versions},
         persistent_genetic_id=None,
         status="not_in_any_supplied_version",
+        per_pair_group_change_class=per_pair_change_class,
     )
+
+
+def _compute_per_pair_change_class(
+    per_version_group_id: dict[str, str | None],
+    sorted_afs: list[AnnoFrame],
+) -> dict[tuple[str, str], str | None]:
+    """Classify the group_id change per adjacent (v_old, v_new) version pair.
+
+    Per LLD §4.1 step 11d. Returns one entry per adjacent pair in the
+    version-sorted anno-frame list. Values are:
+      - one of the six GroupChangeClass values when both ends are non-None
+        AND the group_id differs across the pair;
+      - the string 'none' when both ends are non-None and the group_id is
+        unchanged;
+      - None when either end is absent (individual not present in that
+        version, or per_version_group_id is None for some other reason)."""
+    sorted_versions = tuple(af.version for af in sorted_afs)
+    result: dict[tuple[str, str], str | None] = {}
+    for v_old, v_new in pairwise(sorted_versions):
+        group_old = per_version_group_id.get(v_old)
+        group_new = per_version_group_id.get(v_new)
+        if group_old is None or group_new is None:
+            result[(v_old, v_new)] = None
+        elif group_old == group_new:
+            result[(v_old, v_new)] = "none"
+        else:
+            result[(v_old, v_new)] = classify_group_change(group_old, group_new).value
+    return result
 
 
 def _group_for_gid(af: AnnoFrame, gid: str) -> str | None:
