@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .types import MIDBridge
 
-__version__ = "0.2.0.dev0"
+__version__ = "0.2.0"
 
 from .annoframe import AnnoFrame
 from .bridge import detect_bridge

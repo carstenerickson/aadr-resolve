@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aadr-resolve"
-version = "0.2.0.dev0"
+version = "0.2.0"
 description = "AADR cross-version GeneticID / MasterID join utility for ancient-DNA / population-genetics workflows."
 readme = "README.md"
 license = { text = "MIT" }

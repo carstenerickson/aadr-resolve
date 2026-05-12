@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-05-12
+
+Reporting layer + polish. Closes the biggest doc/code gap in v0.1 by
+delivering the HLD-pinned stdout summary block, the per-event TSV
+streaming sidecar, and the run-level JSON summary sidecar. Plus the
+cohort manifest per-adjacent-pair `group_id_change_class` columns,
+CI coverage gate, and the GitHub Actions Node.js 24 bump.
+
 ### Added — reporting layer
 - **Stdout summary block** on `cohort` and `diff` (HLD §Stdout summary
   block). Replaces the v0.1 "Wrote N rows" placeholder with a rich
