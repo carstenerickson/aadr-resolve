@@ -85,14 +85,16 @@ def detect_class(
     if override is not None:
         return schemas[override]
 
+    known_with_class: list[tuple[str, int, str, str]] = [
+        (defn.class_id.value, n, *defn.detection_signature)
+        for defn in schemas.values()
+        for n in defn.n_columns_set
+    ]
+
     if len(raw_headers) < 2:
         raise SchemaDetectionError(
             observed=(len(raw_headers), "", ""),
-            known=[
-                (ncols, *defn.detection_signature)
-                for defn in schemas.values()
-                for ncols in defn.n_columns_set
-            ],
+            known=known_with_class,
         )
 
     ncols = len(raw_headers)
@@ -104,7 +106,4 @@ def detect_class(
         if ncols in defn.n_columns_set and defn.detection_signature == (norm_0, norm_1):
             return defn
 
-    known = [
-        (n, *defn.detection_signature) for defn in schemas.values() for n in defn.n_columns_set
-    ]
-    raise SchemaDetectionError(observed=observed, known=known)
+    raise SchemaDetectionError(observed=observed, known=known_with_class)

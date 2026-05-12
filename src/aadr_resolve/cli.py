@@ -36,11 +36,12 @@ from .types import ExitCode, SchemaClass
 @click.option(
     "--mid-bridge",
     "mid_bridge_path",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    type=click.Path(dir_okay=False, path_type=Path),
     default=None,
     help=(
         "Manual master_id-rename TSV layered on top of auto-detected bridge. "
-        "Columns: v_old_label, mid_old, v_new_label, mid_new."
+        "Columns: v_old_label, mid_old, v_new_label, mid_new. "
+        "File-not-found is reported via IOFailure (exit 2) with the path."
     ),
 )
 @click.option(
