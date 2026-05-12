@@ -231,6 +231,72 @@ def make_v52_encoding_artifact_fixture(
     out_path.write_text("\t".join(header) + "\n" + body + "\n", encoding="utf-8")
 
 
+def make_loschbour_v66_fixture(out_path: Path, *, schema_def: SchemaClassDef | None = None) -> None:
+    """Class E (v66) fixture with `Loschbour` as a 2-row individual:
+    `Loschbour.AG` (PGID 33) and `Loschbour.DG` (PGID 39136).
+
+    HLD test 9's canonical case: v66 exposes genetic_id, individual_id,
+    and persistent_genetic_id distinctly; multi-row IID is normal."""
+    if schema_def is None:
+        schema_def = load_schema(SchemaClass.E)
+    header = _build_header(schema_def)
+    rng = random.Random(66001)
+    # Build 2 rows for Loschbour + 3 buffer rows for other individuals.
+    rows: list[list[str]] = [_synth_row(i, header, schema_def, rng) for i in range(5)]
+
+    # Override rows 0 and 1 to be Loschbour's two libraries.
+    for row_idx, (gid, pgid) in enumerate([("Loschbour.AG", 33), ("Loschbour.DG", 39136)]):
+        if schema_def.has_field("genetic_id"):
+            rows[row_idx][schema_def.fields["genetic_id"].column - 1] = gid
+        if schema_def.has_field("individual_id"):
+            rows[row_idx][schema_def.fields["individual_id"].column - 1] = "Loschbour"
+        if schema_def.has_field("persistent_genetic_id"):
+            rows[row_idx][schema_def.fields["persistent_genetic_id"].column - 1] = str(pgid)
+        if schema_def.has_field("group_id"):
+            rows[row_idx][schema_def.fields["group_id"].column - 1] = (
+                "Luxembourg_Loschbour_Mesolithic"
+            )
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join("\t".join(r) for r in rows)
+    out_path.write_text("\t".join(header) + "\n" + body + "\n", encoding="utf-8")
+
+
+def make_uky001_v62_fixture(out_path: Path, *, schema_def: SchemaClassDef | None = None) -> None:
+    """Class D (v62) fixture with `UKY001` as a 7-row individual.
+
+    HLD test 10's case: within-version multi-row per IID is normal; lookup
+    returns all 7 rows. Real v62 has UKY001 with 7 rows differing in
+    library / data-type."""
+    if schema_def is None:
+        schema_def = load_schema(SchemaClass.D)
+    header = _build_header(schema_def)
+    rng = random.Random(62001)
+    rows: list[list[str]] = [_synth_row(i, header, schema_def, rng) for i in range(10)]
+
+    # Override first 7 rows to be UKY001 with distinct genetic_id suffixes.
+    suffixes = [
+        "UKY001.AG",
+        "UKY001.DG",
+        "UKY001_a.AG",
+        "UKY001_b.AG",
+        "UKY001_c.AG",
+        "UKY001_d.AG",
+        "UKY001_e.AG",
+    ]
+    for row_idx, gid in enumerate(suffixes):
+        if schema_def.has_field("genetic_id"):
+            rows[row_idx][schema_def.fields["genetic_id"].column - 1] = gid
+        if schema_def.has_field("individual_id"):
+            rows[row_idx][schema_def.fields["individual_id"].column - 1] = "UKY001"
+        if schema_def.has_field("group_id"):
+            rows[row_idx][schema_def.fields["group_id"].column - 1] = "Synth_UKY_Population.AG"
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join("\t".join(r) for r in rows)
+    out_path.write_text("\t".join(header) + "\n" + body + "\n", encoding="utf-8")
+
+
 def _cli() -> None:
     parser = argparse.ArgumentParser(description="Regenerate the committed mini-.anno fixtures.")
     parser.add_argument(
@@ -256,12 +322,14 @@ def _cli() -> None:
         write_anno(spec, out_path)
         print(f"  wrote {out_path} ({out_path.stat().st_size} bytes)")
 
-    # Regression fixtures regenerated only when --class=ALL (the default).
+    # Regression + multi-row fixtures regenerated only when --class=ALL.
     if args.cls == "ALL":
         regression_paths = [
             (args.out_dir / "i21276_quote_v52.anno", make_i21276_quote_fixture),
             (args.out_dir / "v54_trailing_tab.anno", make_v54_trailing_tab_fixture),
             (args.out_dir / "v52_encoding_artifact.anno", make_v52_encoding_artifact_fixture),
+            (args.out_dir / "loschbour_v66.anno", make_loschbour_v66_fixture),
+            (args.out_dir / "uky001_v62.anno", make_uky001_v62_fixture),
         ]
         for out_path, fn in regression_paths:
             fn(out_path)

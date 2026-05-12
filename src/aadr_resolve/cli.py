@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from . import __version__
+from .commands.lookup_cmd import lookup_cmd
 from .commands.schema_cmd import schema_cmd
 from .errors import AadrResolveError
 from .schema import load_all_schemas
@@ -50,6 +51,7 @@ def cli(ctx: click.Context, /, **shared_opts: object) -> None:
     ctx.obj["shared_opts"] = shared_opts
 
 
+cli.add_command(lookup_cmd, name="lookup")
 cli.add_command(schema_cmd, name="schema")
 
 

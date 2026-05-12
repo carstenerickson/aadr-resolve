@@ -1,15 +1,16 @@
 """Shared dataclasses and enums.
 
 Per LLD §2. Day-1 scope: SchemaClass, ExitCode, FieldMapping, SchemaClassDef.
-The rest of the §2 types (MIDBridge, LibraryToken, DiffResult, etc.) land in
-Day 2+ when the code consuming them lands.
+Day-3 additions: LookupResult, LookupRowRecord. The rest of the §2 types
+(MIDBridge, LibraryToken, DiffResult, etc.) land in Day 4+ when the code
+consuming them lands.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, IntEnum
-from typing import Any
+from typing import Any, Literal
 
 
 class SchemaClass(Enum):
@@ -122,3 +123,53 @@ class SchemaClassDef:
                 f"{self.class_id.value} (applies to {list(self.applies_to)})"
             )
         return self.fields[canonical].column
+
+
+# === Day-3: lookup result types ===
+
+
+@dataclass(frozen=True, slots=True)
+class LookupRowRecord:
+    """One row's data in a lookup result. Per LLD §2.10."""
+
+    version_label: str
+    genetic_id: str
+    group_id: str
+    snps_hit_1240k: int | None
+    persistent_genetic_id: int | None  # class E only; None for A–D
+
+
+@dataclass
+class LookupResult:
+    """Output of `aadr-resolve lookup`. Per LLD §2.10 / HLD §Output: lookup."""
+
+    query: str
+    individual_id_canonical: str  # equals query if no bridge; query's canonical post-Day-4
+    matched_via: Literal["individual_id", "genetic_id", "not_found"]
+    # Day-4 will populate this from MID-bridge events; Day-3 leaves empty.
+    master_id_bridge: list[dict[str, str]] = field(default_factory=list)
+    per_version: dict[str, list[LookupRowRecord]] = field(default_factory=dict)
+    status_flags: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-serializable view of the result."""
+        return {
+            "query": self.query,
+            "individual_id_canonical": self.individual_id_canonical,
+            "matched_via": self.matched_via,
+            "master_id_bridge": list(self.master_id_bridge),
+            "per_version": {
+                v: [
+                    {
+                        "version_label": r.version_label,
+                        "genetic_id": r.genetic_id,
+                        "group_id": r.group_id,
+                        "snps_hit_1240k": r.snps_hit_1240k,
+                        "persistent_genetic_id": r.persistent_genetic_id,
+                    }
+                    for r in rows
+                ]
+                for v, rows in self.per_version.items()
+            },
+            "status_flags": list(self.status_flags),
+        }
