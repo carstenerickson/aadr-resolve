@@ -11,6 +11,7 @@ import click
 from . import __version__
 from .commands.cohort_cmd import cohort_cmd
 from .commands.diff_cmd import diff_cmd
+from .commands.join_cmd import join_cmd
 from .commands.lookup_cmd import lookup_cmd
 from .commands.schema_cmd import schema_cmd
 from .errors import AadrResolveError
@@ -37,15 +38,25 @@ from .types import ExitCode, SchemaClass
     "mid_bridge_path",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     default=None,
-    help="Manual master_id-rename TSV (Day-2 feature; currently unused).",
+    help=(
+        "Manual master_id-rename TSV layered on top of auto-detected bridge. "
+        "Columns: v_old_label, mid_old, v_new_label, mid_new."
+    ),
 )
 @click.option(
     "--on-mid-collision",
     type=click.Choice(["error", "warn"]),
     default="error",
-    help="Cross-lab MID collision behavior (Day-4 feature).",
+    help=(
+        "Cross-lab MID collision behavior. 'error' (default) exits 3; 'warn' "
+        "annotates affected rows with status=library_chain_ambiguous."
+    ),
 )
-@click.option("--quiet", is_flag=True, help="Suppress stdout progress block.")
+@click.option(
+    "--quiet",
+    is_flag=True,
+    help="Suppress stdout progress block (cohort + join + diff write phase).",
+)
 @click.pass_context
 def cli(ctx: click.Context, /, **shared_opts: object) -> None:
     """AADR cross-version GeneticID / MasterID join utility."""
@@ -55,6 +66,7 @@ def cli(ctx: click.Context, /, **shared_opts: object) -> None:
 
 cli.add_command(cohort_cmd, name="cohort")
 cli.add_command(diff_cmd, name="diff")
+cli.add_command(join_cmd, name="join")
 cli.add_command(lookup_cmd, name="lookup")
 cli.add_command(schema_cmd, name="schema")
 
