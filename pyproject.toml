@@ -91,4 +91,8 @@ markers = [
     "external: tests that require external tools or real AADR files",
     "perf: performance benchmarks; CI-gated thresholds",
 ]
-addopts = "-ra --strict-markers"
+# LLD §5.5 pin: default invocation excludes slow / external / perf so dev
+# iteration stays fast. CI's `slow` job opts in via `-m "slow and not
+# external"`. The synth perf test slows under --cov instrumentation;
+# keeping it out of the default keeps the coverage-gate run honest.
+addopts = "-ra --strict-markers -m 'not slow and not external and not perf'"
