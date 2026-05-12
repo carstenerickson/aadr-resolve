@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 
 import click
 
 from ..annoframe import AnnoFrame
 from ..bridge import detect_bridge, load_manual_bridge, merge_with_overrides
-from ..diff import compute_diff
+from ..diff import build_diff_run_summary, compute_diff
 from ..errors import ValidationError
 from ..gates import (
     evaluate_substantive_regroup_gate,
@@ -18,6 +19,7 @@ from ..gates import (
     format_gate_message,
     format_substantive_regroup_message,
 )
+from ..reporting import format_stdout_summary
 from ..types import DiffResult, GroupChangeClass, SchemaClass
 
 # Stderr-warn threshold for buffered JSON size when --all-events is set.
@@ -77,7 +79,7 @@ SIZE_WARN_THRESHOLD_BYTES: int = 100 * 1024 * 1024  # 100 MB
     ),
 )
 @click.pass_context
-def diff_cmd(
+def diff_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: tsv/json + 2 gates + summary)
     ctx: click.Context,
     v_old_path: Path,
     v_new_path: Path,
@@ -97,6 +99,9 @@ def diff_cmd(
     version_label = shared.get("version_label")
     mid_bridge_path = shared.get("mid_bridge_path")
     on_mid_collision = shared.get("on_mid_collision", "error")
+    quiet = bool(shared.get("quiet", False))
+
+    t_start = time.perf_counter()
 
     af_old = AnnoFrame.from_path(
         v_old_path, version_label=version_label, schema_override=schema_override
@@ -106,8 +111,10 @@ def diff_cmd(
     )
 
     bridge = detect_bridge([af_old, af_new], on_collision=on_mid_collision)
+    bridge_manual_count = 0
     if mid_bridge_path is not None:
         overrides = load_manual_bridge(mid_bridge_path)
+        bridge_manual_count = len(overrides)
         bridge, warnings = merge_with_overrides(bridge, overrides)
         for w in warnings:
             sys.stderr.write(f"WARNING: {w}\n")
@@ -155,6 +162,30 @@ def diff_cmd(
     )
     if regroup_gate.state == "fail":
         failed.append(format_substantive_regroup_message(regroup_gate))
+
+    elapsed = time.perf_counter() - t_start
+
+    if not quiet:
+        summary = build_diff_run_summary(
+            result=result,
+            af_old=af_old,
+            af_new=af_new,
+            bridge=bridge,
+            bridge_manual_count=bridge_manual_count,
+            out_path=out_path,
+            output_mode="tsv" if as_tsv else "json",
+            turnover_gate=gate,
+            substantive_regroup_gate=regroup_gate,
+            elapsed_seconds=elapsed,
+        )
+        # When the payload is going to stdout (no -o), route the summary
+        # to stderr so we don't break the JSON/TSV pipe. When -o is set,
+        # stdout is free for the summary.
+        summary_text = format_stdout_summary(summary)
+        if out_path is None:
+            sys.stderr.write(summary_text)
+        else:
+            sys.stdout.write(summary_text)
 
     if failed:
         raise ValidationError("; ".join(failed))

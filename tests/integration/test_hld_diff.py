@@ -337,3 +337,130 @@ def test_diff_v62_to_v66_real_regression(real_aadr_v62: Path, real_aadr_v66: Pat
     # for fixed overhead beyond per-event estimate).
     predicted = result.predict_json_size_bytes(all_events=True)
     assert predicted >= 2048
+
+
+# === v0.2 A1 part 2: diff stdout summary block ===
+
+
+def test_diff_stdout_summary_to_file_goes_to_stdout(fixtures_dir: Path, tmp_path: Path) -> None:
+    """`diff -o PATH` routes the summary block to stdout (since stdout
+    isn't carrying the payload). All HLD §Stdout summary block sections
+    appear."""
+    out_path = tmp_path / "diff.json"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "-o",
+            str(out_path),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    stdout = result.stdout
+    assert "Loaded 2 .anno file(s):" in stdout
+    assert "Cross-version bridge:" in stdout
+    assert "Diff events:" in stdout
+    assert "added:" in stdout
+    assert "removed:" in stdout
+    assert "genetic_id_renamed:" in stdout
+    assert "master_id_renamed:" in stdout
+    assert "Wrote diff.json (JSON)" in stdout
+    assert "Done in" in stdout
+
+
+def test_diff_stdout_summary_no_outpath_routes_to_stderr(
+    fixtures_dir: Path, tmp_path: Path
+) -> None:
+    """Without `-o`, the JSON payload goes to stdout — so the summary
+    block routes to stderr to avoid breaking the pipe. The JSON should
+    parse from stdout cleanly."""
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    # stdout is parseable JSON (no summary mixed in).
+    payload = json.loads(result.stdout)
+    assert payload["v_old"] == "loschbour_v54"
+    # Summary block is on stderr.
+    assert "Loaded 2 .anno file(s):" in result.stderr
+    assert "Emitted JSON to stdout" in result.stderr
+
+
+def test_diff_quiet_suppresses_summary(fixtures_dir: Path, tmp_path: Path) -> None:
+    """--quiet suppresses the summary on both routing paths (stdout and
+    stderr); the JSON/TSV payload is unaffected."""
+    out_path = tmp_path / "diff.json"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--quiet",
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "-o",
+            str(out_path),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert "Loaded" not in result.stdout
+    assert "Done in" not in result.stdout
+    assert out_path.exists()
+
+
+def test_diff_summary_substantive_regroup_gate_n_a_when_threshold_unset(
+    fixtures_dir: Path, tmp_path: Path
+) -> None:
+    """Without --substantive-regroup-fail, the gate state in the summary
+    is 'n/a' and the gate line is suppressed (not printed)."""
+    out_path = tmp_path / "diff.json"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "-o",
+            str(out_path),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert "Substantive regroup gate:" not in result.stdout
+
+
+def test_diff_summary_substantive_regroup_gate_shown_when_threshold_set(
+    fixtures_dir: Path, tmp_path: Path
+) -> None:
+    """With --substantive-regroup-fail set (even passing), the gate state
+    line is included in the summary."""
+    out_path = tmp_path / "diff.json"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "-o",
+            str(out_path),
+            "--substantive-regroup-fail",
+            "1000",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    assert "Substantive regroup gate:" in result.stdout

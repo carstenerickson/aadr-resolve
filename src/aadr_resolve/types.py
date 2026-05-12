@@ -504,6 +504,32 @@ class CohortRunSummary:
     elapsed_seconds: float
 
 
+@dataclass(frozen=True, slots=True)
+class DiffRunSummary:
+    """Run-level metadata for the diff stdout summary block + the v0.2
+    A2 `--report-json` sidecar.
+
+    Built by the diff_cmd orchestrator after the diff result is on disk;
+    rendered by `reporting.format_stdout_summary` (dispatches on type)."""
+
+    versions_supplied: tuple[str, ...]
+    anno_file_info: tuple[AnnoFileInfo, ...]
+    bridge_auto_count: int
+    bridge_manual_count: int
+    bridge_collisions: tuple[str, ...]
+    n_added: int
+    n_removed: int
+    n_genetic_id_renamed: int
+    n_master_id_renamed: int
+    group_change_by_class: dict[str, int]
+    out_path: Path | None  # None when emitting to stdout
+    output_mode: str  # 'json' | 'tsv'
+    turnover_state: str  # 'pass' / 'warn' / 'fail'
+    turnover_rate: float
+    substantive_regroup_state: str  # 'pass' / 'fail' / 'n/a' (n/a when threshold=None)
+    elapsed_seconds: float
+
+
 # === Day-3: lookup result types ===
 
 

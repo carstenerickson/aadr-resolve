@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .types import CohortManifest, CohortRunSummary
+from .types import CohortManifest, CohortRunSummary, DiffRunSummary
 
 # Missing-cell sentinel per HLD §Output: cohort manifest TSV.
 TSV_NULL_SENTINEL = "--"
@@ -102,34 +102,84 @@ def write_cohort_json(manifest: CohortManifest, path: Path) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
-def format_stdout_summary(summary: CohortRunSummary) -> str:
-    """Render the cohort stdout summary block per HLD §Stdout summary block.
+def format_stdout_summary(summary: CohortRunSummary | DiffRunSummary) -> str:
+    """Render the stdout summary block per HLD §Stdout summary block.
 
-    Multi-line; caller writes via sys.stdout unless --quiet. Diff variant
-    lands in v0.2 Day 3."""
-    lines: list[str] = []
+    Dispatches on the summary type; cohort and diff blocks share the
+    anno-file header, bridge, group-change histogram, and timing
+    sections. Cohort adds a cohort-input resolution histogram; diff adds
+    a change-event histogram. Multi-line; caller writes via stdout unless
+    `--quiet` (diff routes the block to stderr when output is going to
+    stdout — see diff_cmd)."""
+    if isinstance(summary, CohortRunSummary):
+        return _format_cohort_summary(summary)
+    return _format_diff_summary(summary)
 
-    # Header: loaded .anno files.
-    lines.append(f"Loaded {len(summary.anno_file_info)} .anno file(s):")
-    for info in summary.anno_file_info:
+
+def _format_anno_block(
+    anno_file_info: tuple[Any, ...],
+) -> list[str]:
+    """Shared 'Loaded N .anno files' header lines."""
+    lines = [f"Loaded {len(anno_file_info)} .anno file(s):"]
+    for info in anno_file_info:
         lines.append(
             f"  [{info.version_label}] {info.path.name}: "
             f"{info.n_rows:,} rows × {info.n_cols} cols, class {info.schema_class.value}"
         )
+    return lines
 
-    # Bridge block.
-    lines.append("")
-    lines.append("Cross-version bridge:")
-    lines.append(f"  GID-stable MID-rename detection:  {summary.bridge_auto_count} events")
-    lines.append(f"  Manual --mid-bridge entries:      {summary.bridge_manual_count}")
+
+def _format_bridge_block(
+    bridge_auto_count: int,
+    bridge_manual_count: int,
+    bridge_collisions: tuple[str, ...],
+) -> list[str]:
+    """Shared 'Cross-version bridge' lines."""
     collision_msg = (
-        f"{len(summary.bridge_collisions)} collision(s)"
-        if summary.bridge_collisions
-        else "no collisions detected"
+        f"{len(bridge_collisions)} collision(s)" if bridge_collisions else "no collisions detected"
     )
-    lines.append(f"  Cross-lab MID collision check:    {collision_msg}")
+    return [
+        "Cross-version bridge:",
+        f"  GID-stable MID-rename detection:  {bridge_auto_count} events",
+        f"  Manual --mid-bridge entries:      {bridge_manual_count}",
+        f"  Cross-lab MID collision check:    {collision_msg}",
+    ]
 
-    # Cohort input + resolution histogram.
+
+def _format_group_change_histogram(
+    group_change_by_class: dict[str, int],
+    versions_supplied: tuple[str, ...],
+) -> list[str]:
+    """Shared 'Group ID changes' histogram, empty list when no class has events."""
+    if not any(group_change_by_class.values()):
+        return []
+    first_v = versions_supplied[0] if versions_supplied else ""
+    last_v = versions_supplied[-1] if versions_supplied else ""
+    lines = [f"Group ID changes ({first_v} → {last_v}):"]
+    for cls in (
+        "convention_restructure_suffix",
+        "convention_restructure_country",
+        "convention_restructure_order",
+        "convention_restructure_punct",
+        "partial",
+        "substantive_regroup",
+    ):
+        count = group_change_by_class.get(cls, 0)
+        if count > 0:
+            lines.append(f"  {cls:34s}  {count}")
+    return lines
+
+
+def _format_cohort_summary(summary: CohortRunSummary) -> str:
+    lines: list[str] = []
+    lines.extend(_format_anno_block(summary.anno_file_info))
+    lines.append("")
+    lines.extend(
+        _format_bridge_block(
+            summary.bridge_auto_count, summary.bridge_manual_count, summary.bridge_collisions
+        )
+    )
+
     lines.append("")
     cohort_path_label = summary.cohort_input_path.name if summary.cohort_input_path else "<stdin>"
     lines.append(
@@ -139,25 +189,13 @@ def format_stdout_summary(summary: CohortRunSummary) -> str:
     lines.append(f"  Added after earliest:        {summary.n_added_after_earliest}")
     lines.append(f"  Removed before latest:       {summary.n_removed_before_latest}")
 
-    # Group-change histogram. Only emitted when at least one class has events.
-    if any(summary.group_change_by_class.values()):
+    group_block = _format_group_change_histogram(
+        summary.group_change_by_class, summary.versions_supplied
+    )
+    if group_block:
         lines.append("")
-        first_v = summary.versions_supplied[0] if summary.versions_supplied else ""
-        last_v = summary.versions_supplied[-1] if summary.versions_supplied else ""
-        lines.append(f"Group ID changes ({first_v} → {last_v}):")
-        for cls in (
-            "convention_restructure_suffix",
-            "convention_restructure_country",
-            "convention_restructure_order",
-            "convention_restructure_punct",
-            "partial",
-            "substantive_regroup",
-        ):
-            count = summary.group_change_by_class.get(cls, 0)
-            if count > 0:
-                lines.append(f"  {cls:34s}  {count}")
+        lines.extend(group_block)
 
-    # Write + turnover block.
     lines.append("")
     lines.append(
         f"Wrote {summary.out_path.name} "
@@ -169,10 +207,49 @@ def format_stdout_summary(summary: CohortRunSummary) -> str:
             f"Sample turnover within cohort: {100 * summary.turnover_rate:.1f}% — {verdict}"
         )
 
-    # Timing.
     lines.append("")
     lines.append(f"Done in {summary.elapsed_seconds:.1f}s.")
+    return "\n".join(lines) + "\n"
 
+
+def _format_diff_summary(summary: DiffRunSummary) -> str:
+    lines: list[str] = []
+    lines.extend(_format_anno_block(summary.anno_file_info))
+    lines.append("")
+    lines.extend(
+        _format_bridge_block(
+            summary.bridge_auto_count, summary.bridge_manual_count, summary.bridge_collisions
+        )
+    )
+
+    # Diff event histogram replaces the cohort-input section.
+    lines.append("")
+    lines.append("Diff events:")
+    lines.append(f"  added:                {summary.n_added}")
+    lines.append(f"  removed:              {summary.n_removed}")
+    lines.append(f"  genetic_id_renamed:   {summary.n_genetic_id_renamed}")
+    lines.append(f"  master_id_renamed:    {summary.n_master_id_renamed}")
+
+    group_block = _format_group_change_histogram(
+        summary.group_change_by_class, summary.versions_supplied
+    )
+    if group_block:
+        lines.append("")
+        lines.extend(group_block)
+
+    lines.append("")
+    if summary.out_path is not None:
+        lines.append(f"Wrote {summary.out_path.name} ({summary.output_mode.upper()})")
+    else:
+        lines.append(f"Emitted {summary.output_mode.upper()} to stdout")
+    if summary.turnover_state != "n/a":
+        verdict = summary.turnover_state.upper()
+        lines.append(f"Sample turnover: {100 * summary.turnover_rate:.1f}% — {verdict}")
+    if summary.substantive_regroup_state != "n/a":
+        lines.append(f"Substantive regroup gate: {summary.substantive_regroup_state.upper()}")
+
+    lines.append("")
+    lines.append(f"Done in {summary.elapsed_seconds:.1f}s.")
     return "\n".join(lines) + "\n"
 
 

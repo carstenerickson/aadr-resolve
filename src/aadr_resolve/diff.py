@@ -3,10 +3,19 @@
 from __future__ import annotations
 
 from collections import Counter
+from pathlib import Path
 
 from .annoframe import AnnoFrame
+from .gates import SubstantiveRegroupGateResult, TurnoverGateResult
 from .group_classifier import classify_group_change
-from .types import DiffEvent, DiffResult, GroupChangeClass, MIDBridge
+from .types import (
+    AnnoFileInfo,
+    DiffEvent,
+    DiffResult,
+    DiffRunSummary,
+    GroupChangeClass,
+    MIDBridge,
+)
 
 
 def compute_diff(
@@ -192,3 +201,63 @@ def _majority_group_id(af: AnnoFrame, row_indices: list[int]) -> str:
     # Sort by (-count, group) so ties break alphabetically.
     top = sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))
     return top[0][0]
+
+
+def build_diff_run_summary(
+    *,
+    result: DiffResult,
+    af_old: AnnoFrame,
+    af_new: AnnoFrame,
+    bridge: MIDBridge,
+    bridge_manual_count: int,
+    out_path: Path | None,
+    output_mode: str,
+    turnover_gate: TurnoverGateResult,
+    substantive_regroup_gate: SubstantiveRegroupGateResult,
+    elapsed_seconds: float,
+) -> DiffRunSummary:
+    """Build the run-level summary for the diff stdout block + the v0.2
+    A2 --report-json sidecar.
+
+    Mirrors `cohort.build_cohort_run_summary` shape; diff has its own
+    event counts instead of a cohort-input section. The substantive-
+    regroup gate has a state of 'n/a' when the threshold is unset (HLD
+    default — gate disabled)."""
+    anno_file_info = tuple(
+        AnnoFileInfo(
+            version_label=af.version,
+            path=af.path if af.path is not None else Path(af.version),
+            n_rows=len(af.individual_id),
+            n_cols=len(af.df.columns),
+            schema_class=af.schema_class,
+        )
+        for af in (af_old, af_new)
+    )
+
+    valid_classes = {c.value for c in GroupChangeClass}
+    group_change_by_class: dict[str, int] = dict.fromkeys(valid_classes, 0)
+    for cls, events in result.group_changed_by_class.items():
+        group_change_by_class[cls.value] = len(events)
+
+    regroup_state = (
+        "n/a" if substantive_regroup_gate.threshold is None else substantive_regroup_gate.state
+    )
+
+    return DiffRunSummary(
+        versions_supplied=(result.v_old_label, result.v_new_label),
+        anno_file_info=anno_file_info,
+        bridge_auto_count=len(bridge.events),
+        bridge_manual_count=bridge_manual_count,
+        bridge_collisions=(),
+        n_added=len(result.added),
+        n_removed=len(result.removed),
+        n_genetic_id_renamed=len(result.genetic_id_renamed),
+        n_master_id_renamed=len(result.master_id_renamed),
+        group_change_by_class=group_change_by_class,
+        out_path=out_path,
+        output_mode=output_mode,
+        turnover_state=turnover_gate.state,
+        turnover_rate=turnover_gate.removal_rate,
+        substantive_regroup_state=regroup_state,
+        elapsed_seconds=elapsed_seconds,
+    )
