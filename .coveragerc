@@ -1,0 +1,26 @@
+[run]
+source = aadr_resolve
+branch = True
+# Exclude orchestrators + entry points per LLD §5.6. These are thin click
+# wrappers + the package main module — exercising them to 85% would
+# require trivial wiring tests that don't pay back in regression catch.
+omit =
+    src/aadr_resolve/commands/*.py
+    src/aadr_resolve/__main__.py
+    src/aadr_resolve/cli.py
+
+[report]
+# Pragmas / patterns excluded from the coverage calculation.
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if TYPE_CHECKING:
+    if __name__ == .__main__.:
+    @abstractmethod
+show_missing = True
+precision = 1
+
+[paths]
+source =
+    src/aadr_resolve
+    */site-packages/aadr_resolve

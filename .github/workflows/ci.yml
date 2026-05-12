@@ -39,8 +39,10 @@ jobs:
       - name: Mypy --strict
         run: mypy src/
 
-      - name: "Pytest (default: no slow/external/perf)"
-        run: pytest -ra
+      - name: "Pytest (default: no slow/external/perf) + coverage gate"
+        # Coverage config (omit list, exclude_lines, branch=True) lives in
+        # .coveragerc. Gate at 85% per LLD §5.6.
+        run: pytest -ra --cov=aadr_resolve --cov-fail-under=85
 
   slow:
     name: Slow tests (Linux / Python 3.13)
