@@ -159,6 +159,78 @@ def _synth_row(
     return row
 
 
+def make_i21276_quote_fixture(out_path: Path, *, schema_def: SchemaClassDef | None = None) -> None:
+    """1-row v52 (class B) extract with an unbalanced opening `"` — the
+    regression case for HLD test 7 (csv.QUOTE_NONE).
+
+    The real sample I21276 in v52.2 has a value like `"381-201 calBCE (...)`
+    in the full_date cell (column 12 in class B). The unbalanced opening
+    quote tricks pandas's default QUOTE_MINIMAL into hunting for a matching
+    closing `"`, which it finds on a much later row — effectively eating
+    multiple rows. To reproduce reliably we generate TWO rows so the
+    default-quoting parse eats one and emits one, while QUOTE_NONE
+    preserves both."""
+    if schema_def is None:
+        schema_def = load_schema(SchemaClass.B)
+    header = _build_header(schema_def)
+    rng = random.Random(21276)
+    # Two rows so the unbalanced quote in row 0 eats row 1 under default
+    # quoting (closing quote is found inside row 1's cells), leaving a
+    # single corrupted row. QUOTE_NONE retains both.
+    row0 = _synth_row(0, header, schema_def, rng)
+    row1 = _synth_row(1, header, schema_def, rng)
+    if schema_def.has_field("genetic_id"):
+        row0[schema_def.fields["genetic_id"].column - 1] = "I21276"
+    if schema_def.has_field("individual_id"):
+        row0[schema_def.fields["individual_id"].column - 1] = "I21276"
+    # Inject the unbalanced opening quote into full_date (matches the real
+    # v52 corruption position).
+    if schema_def.has_field("full_date"):
+        row0[schema_def.fields["full_date"].column - 1] = '"381-201 calBCE (2224 BP, SUERC-104569)'
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join("\t".join(r) for r in [row0, row1])
+    out_path.write_text("\t".join(header) + "\n" + body + "\n", encoding="utf-8")
+
+
+def make_v54_trailing_tab_fixture(
+    out_path: Path, *, schema_def: SchemaClassDef | None = None
+) -> None:
+    """Class C (v54.1) fixture with a trailing tab on the header line — the
+    regression case for HLD test 8 (trailing-tab phantom-column drop)."""
+    if schema_def is None:
+        schema_def = load_schema(SchemaClass.C)
+    header = _build_header(schema_def)
+    rng = random.Random(54100)
+    row = _synth_row(0, header, schema_def, rng)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    # Header line ends with a tab (producing a 37th phantom column in v54.1).
+    out_path.write_text(
+        "\t".join(header) + "\t\n" + "\t".join(row) + "\n",
+        encoding="utf-8",
+    )
+
+
+def make_v52_encoding_artifact_fixture(
+    out_path: Path, *, schema_def: SchemaClassDef | None = None
+) -> None:
+    """Class B (v52) fixture with a stray Unicode-replacement-char prefix on
+    one row's coverage cell — the regression case from HLD §Coverage
+    normalization (v52 has 24 such rows in the wild; loader coerces to NaN)."""
+    if schema_def is None:
+        schema_def = load_schema(SchemaClass.B)
+    header = _build_header(schema_def)
+    rng = random.Random(5200)
+    # 3 normal rows + 1 with the artifact.
+    rows: list[list[str]] = [_synth_row(i, header, schema_def, rng) for i in range(4)]
+    if schema_def.has_field("coverage_1240k"):
+        cov_idx = schema_def.fields["coverage_1240k"].column - 1
+        # Stray U+FFFD (Unicode replacement char) before the float.
+        rows[2][cov_idx] = "�0.158431"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    body = "\n".join("\t".join(r) for r in rows)
+    out_path.write_text("\t".join(header) + "\n" + body + "\n", encoding="utf-8")
+
+
 def _cli() -> None:
     parser = argparse.ArgumentParser(description="Regenerate the committed mini-.anno fixtures.")
     parser.add_argument(
@@ -183,6 +255,17 @@ def _cli() -> None:
         out_path = args.out_dir / f"tiny_class_{cls.value}.anno"
         write_anno(spec, out_path)
         print(f"  wrote {out_path} ({out_path.stat().st_size} bytes)")
+
+    # Regression fixtures regenerated only when --class=ALL (the default).
+    if args.cls == "ALL":
+        regression_paths = [
+            (args.out_dir / "i21276_quote_v52.anno", make_i21276_quote_fixture),
+            (args.out_dir / "v54_trailing_tab.anno", make_v54_trailing_tab_fixture),
+            (args.out_dir / "v52_encoding_artifact.anno", make_v52_encoding_artifact_fixture),
+        ]
+        for out_path, fn in regression_paths:
+            fn(out_path)
+            print(f"  wrote {out_path} ({out_path.stat().st_size} bytes)")
 
 
 if __name__ == "__main__":

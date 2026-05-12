@@ -77,34 +77,75 @@ class AnnoFrame:
     def persistent_genetic_id(self) -> pd.Series | None:
         """v66+ only (class E). Returns None for classes A-D.
 
-        Day-1 scaffold returns the raw string Series for class E (cast to Int64
-        lands in Day 2 alongside date_norm.to_int64_nullable)."""
+        Int64 nullable Series of the numeric Persistent Genetic ID column."""
         if self.schema_class != SchemaClass.E:
             return None
-        # Day 2 will replace with to_int64_nullable.
-        return self._raw_column("persistent_genetic_id").astype("string").copy()
+        from .date_norm import to_int64_nullable
 
-    # === Day-2 stubs ===
+        raw = self._raw_column("persistent_genetic_id")
+        return to_int64_nullable(raw).copy()
+
+    # === Int64-nullable date accessors ===
 
     @property
     def date_calbp(self) -> pd.Series:
-        raise NotImplementedError(
-            "AnnoFrame.date_calbp lands in Day 2 (date_norm.to_int64_nullable). "
-            "Day 1 only exposes string identity columns."
-        )
+        """Canonical calBP (integer years before 1950 CE) as nullable Int64.
+
+        Cached on first access; cleared by reset_caches(). Per HLD §Date
+        normalization, bench-verified clean across all 6 versions (0 nulls;
+        range 0-185000)."""
+        if self._date_calbp_cache is None:
+            from .date_norm import to_int64_nullable
+
+            raw = self._raw_column("date_mean_bp")
+            self._date_calbp_cache = to_int64_nullable(raw)
+        return self._date_calbp_cache.copy()
 
     @property
     def date_sd_bp(self) -> pd.Series:
-        raise NotImplementedError("AnnoFrame.date_sd_bp lands in Day 2.")
+        """Date SD (BP) as nullable Int64. Used by CI-aware time-series cohorts."""
+        from .date_norm import to_int64_nullable
+
+        raw = self._raw_column("date_sd_bp")
+        return to_int64_nullable(raw).copy()
+
+    # === Float64 coverage accessors ===
 
     @property
     def coverage(self) -> pd.Series:
-        raise NotImplementedError(
-            "AnnoFrame.coverage lands in Day 2 (coverage_norm.resolve_coverage)."
-        )
+        """1240k-target coverage Float64. NaN for missing.
+
+        For class D (v62, no native column) returns an all-NaN Series of
+        length n_rows. Use coverage_via('snps_hit_1240k') for the derived
+        proxy (with Poisson-divergence stderr warning)."""
+        return self.coverage_via("coverage_1240k")
 
     def coverage_via(self, canonical_field: str) -> pd.Series:
-        raise NotImplementedError("AnnoFrame.coverage_via lands in Day 2.")
+        """Float64 coverage from a specified canonical field.
+
+        See coverage_norm.resolve_coverage for the per-class routing logic
+        + the Poisson-divergence caveat when 'snps_hit_1240k' is requested.
+
+        Results are cached on the AnnoFrame instance (one cache per
+        canonical_field); copies are returned to library consumers so
+        mutation by the caller doesn't corrupt the cache."""
+        if canonical_field in self._coverage_cache:
+            return self._coverage_cache[canonical_field].copy()
+
+        from .coverage_norm import resolve_coverage
+
+        series = resolve_coverage(self, canonical_field)
+        self._coverage_cache[canonical_field] = series
+        return series.copy()
+
+    def reset_caches(self) -> None:
+        """Clear the typed-accessor caches.
+
+        Useful in tests when the same AnnoFrame instance is reused across
+        scenarios that monkeypatch coverage_norm.PANEL_CARDINALITY_1240K
+        (the cached values would otherwise reflect the pre-patch state)."""
+        self._date_calbp_cache = None
+        self._coverage_cache.clear()
 
     # === Internal helpers ===
 

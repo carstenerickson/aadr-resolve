@@ -54,6 +54,12 @@ def read_anno(
         schemas = load_all_schemas()
 
     raw_headers = _read_header_only(path)
+    # Drop trailing-tab phantom column BEFORE schema detection. v54.1's
+    # header ends with a tab, producing an empty 37th entry that would
+    # otherwise make detect_class fail (no class declares ncols=37).
+    raw_headers, phantom_dropped = _drop_trailing_phantom_from_headers(raw_headers)
+    if phantom_dropped:
+        sys.stderr.write("WARNING: trailing-tab phantom column dropped from .anno header.\n")
     schema_def = detect_class(raw_headers, schemas, override=schema_override)
 
     inferred_label, was_inferred = infer_version_label(path, override=version_label)
@@ -100,6 +106,16 @@ def read_anno(
         schema_def=schema_def,
         df=df,
     )
+
+
+def _drop_trailing_phantom_from_headers(headers: list[str]) -> tuple[list[str], bool]:
+    """If the last entry's normalize_header form is empty (consequence of a
+    trailing tab in the header line), drop it. Returns (headers, was_dropped)."""
+    if not headers:
+        return headers, False
+    if normalize_header(headers[-1]) == "":
+        return headers[:-1], True
+    return headers, False
 
 
 def _dedup_names(names: list[str]) -> list[str]:
