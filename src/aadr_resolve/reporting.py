@@ -1,4 +1,4 @@
-"""Cohort manifest writers. Per LLD §3.14."""
+"""Cohort manifest writers + stdout summary renderer. Per LLD §3.14."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .types import CohortManifest
+from .types import CohortManifest, CohortRunSummary
 
 # Missing-cell sentinel per HLD §Output: cohort manifest TSV.
 TSV_NULL_SENTINEL = "--"
@@ -100,6 +100,80 @@ def write_cohort_json(manifest: CohortManifest, path: Path) -> None:
             }
         )
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def format_stdout_summary(summary: CohortRunSummary) -> str:
+    """Render the cohort stdout summary block per HLD §Stdout summary block.
+
+    Multi-line; caller writes via sys.stdout unless --quiet. Diff variant
+    lands in v0.2 Day 3."""
+    lines: list[str] = []
+
+    # Header: loaded .anno files.
+    lines.append(f"Loaded {len(summary.anno_file_info)} .anno file(s):")
+    for info in summary.anno_file_info:
+        lines.append(
+            f"  [{info.version_label}] {info.path.name}: "
+            f"{info.n_rows:,} rows × {info.n_cols} cols, class {info.schema_class.value}"
+        )
+
+    # Bridge block.
+    lines.append("")
+    lines.append("Cross-version bridge:")
+    lines.append(f"  GID-stable MID-rename detection:  {summary.bridge_auto_count} events")
+    lines.append(f"  Manual --mid-bridge entries:      {summary.bridge_manual_count}")
+    collision_msg = (
+        f"{len(summary.bridge_collisions)} collision(s)"
+        if summary.bridge_collisions
+        else "no collisions detected"
+    )
+    lines.append(f"  Cross-lab MID collision check:    {collision_msg}")
+
+    # Cohort input + resolution histogram.
+    lines.append("")
+    cohort_path_label = summary.cohort_input_path.name if summary.cohort_input_path else "<stdin>"
+    lines.append(
+        f"Cohort input: {cohort_path_label} ({summary.cohort_input_n_individuals} individuals)"
+    )
+    lines.append(f"  Resolved in latest version:  {summary.n_resolved_in_latest}")
+    lines.append(f"  Added after earliest:        {summary.n_added_after_earliest}")
+    lines.append(f"  Removed before latest:       {summary.n_removed_before_latest}")
+
+    # Group-change histogram. Only emitted when at least one class has events.
+    if any(summary.group_change_by_class.values()):
+        lines.append("")
+        first_v = summary.versions_supplied[0] if summary.versions_supplied else ""
+        last_v = summary.versions_supplied[-1] if summary.versions_supplied else ""
+        lines.append(f"Group ID changes ({first_v} → {last_v}):")
+        for cls in (
+            "convention_restructure_suffix",
+            "convention_restructure_country",
+            "convention_restructure_order",
+            "convention_restructure_punct",
+            "partial",
+            "substantive_regroup",
+        ):
+            count = summary.group_change_by_class.get(cls, 0)
+            if count > 0:
+                lines.append(f"  {cls:34s}  {count}")
+
+    # Write + turnover block.
+    lines.append("")
+    lines.append(
+        f"Wrote {summary.out_path.name} "
+        f"({summary.n_rows_written} rows × {summary.n_cols_written} cols)"
+    )
+    if summary.turnover_state != "n/a":
+        verdict = summary.turnover_state.upper()
+        lines.append(
+            f"Sample turnover within cohort: {100 * summary.turnover_rate:.1f}% — {verdict}"
+        )
+
+    # Timing.
+    lines.append("")
+    lines.append(f"Done in {summary.elapsed_seconds:.1f}s.")
+
+    return "\n".join(lines) + "\n"
 
 
 def _column_prefix(version_label: str) -> str:

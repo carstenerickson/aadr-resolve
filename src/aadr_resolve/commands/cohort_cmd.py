@@ -3,13 +3,19 @@
 from __future__ import annotations
 
 import sys
+import time
 from pathlib import Path
 
 import click
 
 from ..annoframe import AnnoFrame
 from ..bridge import detect_bridge, load_manual_bridge, merge_with_overrides
-from ..cohort import build_manifest, detect_cohort_version, parse_cohort_file
+from ..cohort import (
+    build_cohort_run_summary,
+    build_manifest,
+    detect_cohort_version,
+    parse_cohort_file,
+)
 from ..errors import UsageError, ValidationError
 from ..gates import (
     evaluate_cohort_coverage_gate,
@@ -18,7 +24,7 @@ from ..gates import (
     format_gate_message,
 )
 from ..library_token import build_all_library_identities
-from ..reporting import write_cohort_json, write_cohort_tsv
+from ..reporting import format_stdout_summary, write_cohort_json, write_cohort_tsv
 from ..types import SchemaClass
 
 
@@ -93,7 +99,7 @@ from ..types import SchemaClass
     help="Exit 1 when resolved cohort fraction drops below this.",
 )
 @click.pass_context
-def cohort_cmd(  # noqa: PLR0912 (orchestrator: linear setup + 2 gates × {warn,fail})
+def cohort_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: linear setup + 2 gates × {warn,fail} + summary)
     ctx: click.Context,
     cohort_file: Path,
     anno_paths: tuple[Path, ...],
@@ -117,14 +123,18 @@ def cohort_cmd(  # noqa: PLR0912 (orchestrator: linear setup + 2 gates × {warn,
     on_mid_collision = shared.get("on_mid_collision", "error")
     quiet = bool(shared.get("quiet", False))
 
+    t_start = time.perf_counter()
+
     anno_frames = [
         AnnoFrame.from_path(p, version_label=version_label, schema_override=schema_override)
         for p in anno_paths
     ]
 
     bridge = detect_bridge(anno_frames, on_collision=on_mid_collision)
+    bridge_manual_count = 0
     if mid_bridge_path is not None:
         overrides = load_manual_bridge(mid_bridge_path)
+        bridge_manual_count = len(overrides)
         bridge, warnings = merge_with_overrides(bridge, overrides)
         for w in warnings:
             sys.stderr.write(f"WARNING: {w}\n")
@@ -158,14 +168,13 @@ def cohort_cmd(  # noqa: PLR0912 (orchestrator: linear setup + 2 gates × {warn,
 
     if as_json:
         write_cohort_json(manifest, out_path)
+        # JSON output: 'columns' isn't meaningful; report fields-per-row.
+        n_cols_written = 9
     else:
         write_cohort_tsv(manifest, out_path)
-
-    if not quiet:
-        sys.stdout.write(
-            f"Wrote {manifest.n_libraries} rows "
-            f"({manifest.n_individuals} individuals) to {out_path}\n"
-        )
+        # Count actual TSV columns from the header line.
+        header_line = out_path.read_text(encoding="utf-8").splitlines()[0]
+        n_cols_written = len(header_line.split("\t"))
 
     for w in manifest.warnings:
         sys.stderr.write(f"WARNING: {w}\n")
@@ -198,6 +207,23 @@ def cohort_cmd(  # noqa: PLR0912 (orchestrator: linear setup + 2 gates × {warn,
         sys.stderr.write(f"WARNING: {coverage_msg}\n")
     elif coverage_gate.state == "fail":
         failed.append(coverage_msg)
+
+    elapsed = time.perf_counter() - t_start
+
+    if not quiet:
+        summary = build_cohort_run_summary(
+            manifest=manifest,
+            anno_frames=anno_frames,
+            bridge=bridge,
+            bridge_manual_count=bridge_manual_count,
+            cohort_input_path=cohort_file,
+            cohort_input_n_individuals=len(cohort_input),
+            out_path=out_path,
+            n_cols_written=n_cols_written,
+            turnover_gates=gates,
+            elapsed_seconds=elapsed,
+        )
+        sys.stdout.write(format_stdout_summary(summary))
 
     if failed:
         raise ValidationError("; ".join(failed))

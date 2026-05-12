@@ -425,3 +425,146 @@ def test_per_pair_change_class_json_keys_stringified(fixtures_dir: Path, tmp_pat
     keys = set(first["per_pair_group_change_class"].keys())
     assert "v54.1__to__v62.0" in keys
     assert "v62.0__to__v66.0" in keys
+
+
+# === v0.2 A1 part 1: cohort stdout summary block ===
+
+
+def test_cohort_stdout_summary_has_all_sections(fixtures_dir: Path, tmp_path: Path) -> None:
+    """The cohort summary block contains every named section per HLD
+    §Stdout summary block. Asserts the section headings exist; doesn't
+    pin exact whitespace so the test isn't whitespace-fragile."""
+    from click.testing import CliRunner
+
+    from aadr_resolve.cli import cli as cli_group
+
+    cohort_file = tmp_path / "cohort.tsv"
+    cohort_file.write_text("I0001\tLoschbour\n", encoding="utf-8")
+    out_path = tmp_path / "manifest.tsv"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "cohort",
+            str(cohort_file),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v66.anno"),
+            "--cohort-version",
+            "loschbour_v54",
+            "-o",
+            str(out_path),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    stdout = result.stdout
+
+    # Each block heading appears.
+    assert "Loaded 3 .anno file(s):" in stdout
+    assert "Cross-version bridge:" in stdout
+    assert "Cohort input:" in stdout
+    assert "GID-stable MID-rename detection:" in stdout
+    assert "Manual --mid-bridge entries:" in stdout
+    assert "Cross-lab MID collision check:" in stdout
+    assert "Resolved in latest version:" in stdout
+    assert "Wrote manifest.tsv" in stdout
+    assert "Sample turnover within cohort:" in stdout
+    assert "Done in" in stdout
+
+    # Per-anno bullets carry the version label + class.
+    assert "[loschbour_v54]" in stdout
+    assert "[loschbour_v62]" in stdout
+    assert "[loschbour_v66]" in stdout
+    assert "class C" in stdout
+    assert "class D" in stdout
+    assert "class E" in stdout
+
+
+def test_cohort_quiet_suppresses_stdout_summary(fixtures_dir: Path, tmp_path: Path) -> None:
+    """--quiet suppresses the entire stdout summary block (nothing on
+    stdout); stderr warnings still emit if any."""
+    from click.testing import CliRunner
+
+    from aadr_resolve.cli import cli as cli_group
+
+    cohort_file = tmp_path / "cohort.tsv"
+    cohort_file.write_text("I0001\tLoschbour\n", encoding="utf-8")
+    out_path = tmp_path / "manifest.tsv"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--quiet",
+            "cohort",
+            str(cohort_file),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "--cohort-version",
+            "loschbour_v54",
+            "-o",
+            str(out_path),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    # Nothing on stdout.
+    assert result.stdout == ""
+    # Manifest still written.
+    assert out_path.exists()
+
+
+def test_cohort_stdout_summary_group_change_histogram_emitted(
+    fixtures_dir: Path, tmp_path: Path
+) -> None:
+    """When at least one substantive group_id change exists in the
+    manifest, the Group ID changes histogram block is emitted. With v54
+    + v62 + v66 over Loschbour, Luxembourg_Loschbour → Mesolithic across
+    the pairs produces 'partial' or 'substantive_regroup' entries."""
+    from click.testing import CliRunner
+
+    from aadr_resolve.cli import cli as cli_group
+
+    cohort_file = tmp_path / "cohort.tsv"
+    cohort_file.write_text("I0001\tLoschbour\n", encoding="utf-8")
+    out_path = tmp_path / "manifest.tsv"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "cohort",
+            str(cohort_file),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v66.anno"),
+            "--cohort-version",
+            "loschbour_v54",
+            "-o",
+            str(out_path),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    stdout = result.stdout
+    assert "Group ID changes" in stdout
+    # At least one of the six classes should appear with a non-zero count.
+    classes = [
+        "convention_restructure_suffix",
+        "convention_restructure_country",
+        "convention_restructure_order",
+        "convention_restructure_punct",
+        "partial",
+        "substantive_regroup",
+    ]
+    assert any(c in stdout for c in classes)

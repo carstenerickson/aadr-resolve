@@ -11,10 +11,14 @@ import pandas as pd
 from .annoframe import AnnoFrame
 from .date_norm import to_int64_nullable
 from .errors import IOFailure, UsageError
+from .gates import TurnoverGateResult
 from .group_classifier import classify_group_change
 from .library_token import collapse_to_individual, version_tuple
 from .types import (
+    AnnoFileInfo,
     CohortManifest,
+    CohortRunSummary,
+    GroupChangeClass,
     LibraryIdentityResult,
     LibraryToken,
     ManifestRow,
@@ -495,3 +499,97 @@ def _row_status(
         next_version = sorted_versions[last_present_idx + 1]
         return f"removed_before_{_version_column_prefix(next_version)}"
     return "present_some"
+
+
+def build_cohort_run_summary(
+    *,
+    manifest: CohortManifest,
+    anno_frames: list[AnnoFrame],
+    bridge: MIDBridge,
+    bridge_manual_count: int,
+    cohort_input_path: Path | None,
+    cohort_input_n_individuals: int,
+    out_path: Path,
+    n_cols_written: int,
+    turnover_gates: list[TurnoverGateResult],
+    elapsed_seconds: float,
+) -> CohortRunSummary:
+    """Build the run-level summary for stdout + JSON sidecar rendering.
+
+    Aggregates the orchestrator's intermediate state into one frozen
+    dataclass. `n_cols_written` is what the TSV writer actually emitted —
+    cohort_cmd computes it by counting the manifest's TSV columns
+    (versions × per-version-cols + per-pair cols + fixed cols + status).
+    See `reporting.format_stdout_summary` for the renderer."""
+    sorted_afs = sorted(anno_frames, key=version_tuple)
+    anno_file_info = tuple(
+        AnnoFileInfo(
+            version_label=af.version,
+            path=af.path if af.path is not None else Path(af.version),
+            n_rows=len(af.individual_id),
+            n_cols=len(af.df.columns),
+            schema_class=af.schema_class,
+        )
+        for af in sorted_afs
+    )
+
+    # Resolution histogram over earliest vs latest version, computed from
+    # manifest rows' presence pattern in per_version_gid.
+    earliest = sorted_afs[0].version if sorted_afs else None
+    latest = sorted_afs[-1].version if sorted_afs else None
+    n_resolved_in_latest = 0
+    n_added_after_earliest = 0
+    n_removed_before_latest = 0
+    if earliest is not None and latest is not None:
+        canonical_presence: dict[str, set[str]] = {}
+        for row in manifest.rows:
+            present = {v for v, gid in row.per_version_gid.items() if gid is not None}
+            canonical_presence.setdefault(row.individual_id_canonical, set()).update(present)
+        for present in canonical_presence.values():
+            in_earliest = earliest in present
+            in_latest = latest in present
+            if in_latest:
+                n_resolved_in_latest += 1
+            if in_latest and not in_earliest:
+                n_added_after_earliest += 1
+            if in_earliest and not in_latest:
+                n_removed_before_latest += 1
+
+    # Group-change histogram: aggregate per_pair_group_change_class across
+    # all rows × all pairs. Counts substantive classifications only (skips
+    # 'none' and None).
+    valid_classes = {c.value for c in GroupChangeClass}
+    group_change_by_class: dict[str, int] = dict.fromkeys(valid_classes, 0)
+    for row in manifest.rows:
+        for cls in row.per_pair_group_change_class.values():
+            if cls in valid_classes:
+                group_change_by_class[cls] += 1
+
+    # Turnover state: the worst (highest-severity) pair wins. 'fail' > 'warn' > 'pass'.
+    severity_order = {"pass": 0, "warn": 1, "fail": 2}
+    worst_state = "n/a"
+    worst_rate = 0.0
+    if turnover_gates:
+        worst_gate = max(turnover_gates, key=lambda g: severity_order.get(g.state, -1))
+        worst_state = worst_gate.state
+        worst_rate = worst_gate.removal_rate
+
+    return CohortRunSummary(
+        versions_supplied=manifest.versions_supplied,
+        anno_file_info=anno_file_info,
+        bridge_auto_count=len(bridge.events),
+        bridge_manual_count=bridge_manual_count,
+        bridge_collisions=(),  # populated when on_collision='warn' surfaces them; future work
+        cohort_input_path=cohort_input_path,
+        cohort_input_n_individuals=cohort_input_n_individuals,
+        n_resolved_in_latest=n_resolved_in_latest,
+        n_added_after_earliest=n_added_after_earliest,
+        n_removed_before_latest=n_removed_before_latest,
+        group_change_by_class=group_change_by_class,
+        out_path=out_path,
+        n_rows_written=manifest.n_libraries,
+        n_cols_written=n_cols_written,
+        turnover_state=worst_state,
+        turnover_rate=worst_rate,
+        elapsed_seconds=elapsed_seconds,
+    )

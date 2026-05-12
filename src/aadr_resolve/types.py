@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum, IntEnum
+from pathlib import Path
 from typing import Any, Literal
 
 
@@ -457,6 +458,50 @@ class CohortManifest:
     @property
     def n_libraries(self) -> int:
         return len(self.rows)
+
+
+# === v0.2: run-summary types for the stdout summary block + --report-json ===
+
+
+@dataclass(frozen=True, slots=True)
+class AnnoFileInfo:
+    """One row of the 'Loaded N .anno files' header block.
+
+    Captures what the user would have seen at file-load time: the version
+    label, source path, row + column counts, and detected schema class."""
+
+    version_label: str
+    path: Path
+    n_rows: int
+    n_cols: int
+    schema_class: SchemaClass
+
+
+@dataclass(frozen=True, slots=True)
+class CohortRunSummary:
+    """Run-level metadata for the cohort stdout summary block + the v0.2
+    A2 `--report-json` sidecar.
+
+    Built by the cohort_cmd orchestrator after the manifest is on disk;
+    rendered by `reporting.format_stdout_summary`."""
+
+    versions_supplied: tuple[str, ...]
+    anno_file_info: tuple[AnnoFileInfo, ...]
+    bridge_auto_count: int
+    bridge_manual_count: int
+    bridge_collisions: tuple[str, ...]
+    cohort_input_path: Path | None
+    cohort_input_n_individuals: int
+    n_resolved_in_latest: int
+    n_added_after_earliest: int
+    n_removed_before_latest: int
+    group_change_by_class: dict[str, int]
+    out_path: Path
+    n_rows_written: int
+    n_cols_written: int
+    turnover_state: str  # 'pass' / 'warn' / 'fail' / 'n/a'
+    turnover_rate: float
+    elapsed_seconds: float
 
 
 # === Day-3: lookup result types ===

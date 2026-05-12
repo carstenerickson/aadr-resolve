@@ -71,6 +71,7 @@ ignore = [
     "PLR0913",   # too-many-arguments (orchestrators legitimately take many)
     "PLR2004",   # magic-value-comparison (column-index ints, etc.)
     "PLC0415",   # import-not-at-top (we use local imports to break circular deps)
+    "RUF001",    # ambiguous unicode in strings (× in stdout summary block matches HLD)
     "RUF002",    # ambiguous unicode in docstrings (en-dash etc. are fine)
     "RUF003",    # ambiguous unicode in comments (same)
 ]
