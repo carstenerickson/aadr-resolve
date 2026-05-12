@@ -24,7 +24,12 @@ from ..gates import (
     format_gate_message,
 )
 from ..library_token import build_all_library_identities
-from ..reporting import format_stdout_summary, write_cohort_json, write_cohort_tsv
+from ..reporting import (
+    format_stdout_summary,
+    write_cohort_json,
+    write_cohort_tsv,
+    write_report_json_summary,
+)
 from ..types import SchemaClass
 
 
@@ -98,6 +103,16 @@ from ..types import SchemaClass
     show_default=True,
     help="Exit 1 when resolved cohort fraction drops below this.",
 )
+@click.option(
+    "--report-json",
+    "report_json_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Write a run-level summary JSON sidecar to PATH (~few KB; "
+        "loadable via json.load by CI dashboards + sibling tools)."
+    ),
+)
 @click.pass_context
 def cohort_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: linear setup + 2 gates Ã— {warn,fail} + summary)
     ctx: click.Context,
@@ -113,6 +128,7 @@ def cohort_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: linear setup + 2 gates Ã
     turnover_fail: float,
     cohort_coverage_warn: float,
     cohort_coverage_fail: float,
+    report_json_path: Path | None,
 ) -> None:
     """Emit a cross-version cohort manifest."""
     shared = ctx.obj["shared_opts"] if ctx.obj else {}
@@ -130,6 +146,8 @@ def cohort_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: linear setup + 2 gates Ã
         for p in anno_paths
     ]
 
+    collected_warnings: list[str] = []
+
     bridge = detect_bridge(anno_frames, on_collision=on_mid_collision)
     bridge_manual_count = 0
     if mid_bridge_path is not None:
@@ -138,6 +156,7 @@ def cohort_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: linear setup + 2 gates Ã
         bridge, warnings = merge_with_overrides(bridge, overrides)
         for w in warnings:
             sys.stderr.write(f"WARNING: {w}\n")
+            collected_warnings.append(w)
 
     cohort_input = parse_cohort_file(cohort_file)
 
@@ -178,6 +197,7 @@ def cohort_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: linear setup + 2 gates Ã
 
     for w in manifest.warnings:
         sys.stderr.write(f"WARNING: {w}\n")
+        collected_warnings.append(w)
 
     gates = evaluate_turnover_cohort(
         manifest, turnover_warn=turnover_warn, turnover_fail=turnover_fail
@@ -187,6 +207,7 @@ def cohort_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: linear setup + 2 gates Ã
         gate_msg = format_gate_message(gate, warn_pct=turnover_warn, fail_pct=turnover_fail)
         if gate.state == "warn":
             sys.stderr.write(f"WARNING: {gate_msg}\n")
+            collected_warnings.append(gate_msg)
         elif gate.state == "fail":
             failed.append(gate_msg)
 
@@ -205,24 +226,42 @@ def cohort_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: linear setup + 2 gates Ã
     )
     if coverage_gate.state == "warn":
         sys.stderr.write(f"WARNING: {coverage_msg}\n")
+        collected_warnings.append(coverage_msg)
     elif coverage_gate.state == "fail":
         failed.append(coverage_msg)
 
     elapsed = time.perf_counter() - t_start
 
+    summary = build_cohort_run_summary(
+        manifest=manifest,
+        anno_frames=anno_frames,
+        bridge=bridge,
+        bridge_manual_count=bridge_manual_count,
+        cohort_input_path=cohort_file,
+        cohort_input_n_individuals=len(cohort_input),
+        out_path=out_path,
+        n_cols_written=n_cols_written,
+        turnover_gates=gates,
+        cohort_coverage_state=coverage_gate.state,
+        cohort_coverage_rate=coverage_gate.coverage,
+        warnings=tuple(collected_warnings),
+        config={
+            "turnover_warn": turnover_warn,
+            "turnover_fail": turnover_fail,
+            "cohort_coverage_warn": cohort_coverage_warn,
+            "cohort_coverage_fail": cohort_coverage_fail,
+            "no_propagate": no_propagate,
+            "collapse_to_individual": collapse,
+            "gid_preference": list(preference),
+            "output_format": "json" if as_json else "tsv",
+        },
+        elapsed_seconds=elapsed,
+    )
+
+    if report_json_path is not None:
+        write_report_json_summary(summary, report_json_path)
+
     if not quiet:
-        summary = build_cohort_run_summary(
-            manifest=manifest,
-            anno_frames=anno_frames,
-            bridge=bridge,
-            bridge_manual_count=bridge_manual_count,
-            cohort_input_path=cohort_file,
-            cohort_input_n_individuals=len(cohort_input),
-            out_path=out_path,
-            n_cols_written=n_cols_written,
-            turnover_gates=gates,
-            elapsed_seconds=elapsed,
-        )
         sys.stdout.write(format_stdout_summary(summary))
 
     if failed:

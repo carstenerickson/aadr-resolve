@@ -512,6 +512,10 @@ def build_cohort_run_summary(
     out_path: Path,
     n_cols_written: int,
     turnover_gates: list[TurnoverGateResult],
+    cohort_coverage_state: str = "n/a",
+    cohort_coverage_rate: float = 0.0,
+    warnings: tuple[str, ...] = (),
+    config: dict[str, object] | None = None,
     elapsed_seconds: float,
 ) -> CohortRunSummary:
     """Build the run-level summary for stdout + JSON sidecar rendering.
@@ -574,6 +578,16 @@ def build_cohort_run_summary(
         worst_state = worst_gate.state
         worst_rate = worst_gate.removal_rate
 
+    # Label-source + status histograms over manifest rows (per LLD §3.14
+    # JSON sidecar shape). Histograms are over rows, not individuals.
+    label_source_histogram: dict[str, int] = {}
+    status_histogram: dict[str, int] = {}
+    for row in manifest.rows:
+        label_source_histogram[row.cohort_label_source] = (
+            label_source_histogram.get(row.cohort_label_source, 0) + 1
+        )
+        status_histogram[row.status] = status_histogram.get(row.status, 0) + 1
+
     return CohortRunSummary(
         versions_supplied=manifest.versions_supplied,
         anno_file_info=anno_file_info,
@@ -592,4 +606,11 @@ def build_cohort_run_summary(
         turnover_state=worst_state,
         turnover_rate=worst_rate,
         elapsed_seconds=elapsed_seconds,
+        n_individuals=manifest.n_individuals,
+        label_source_histogram=label_source_histogram,
+        status_histogram=status_histogram,
+        cohort_coverage_state=cohort_coverage_state,
+        cohort_coverage_rate=cohort_coverage_rate,
+        warnings=warnings,
+        config=dict(config) if config is not None else {},
     )

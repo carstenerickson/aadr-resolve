@@ -464,3 +464,131 @@ def test_diff_summary_substantive_regroup_gate_shown_when_threshold_set(
     )
     assert result.exit_code == 0
     assert "Substantive regroup gate:" in result.stdout
+
+
+# === v0.2 A2: --report-json summary sidecar (diff) ===
+
+
+def test_diff_report_json_summary_round_trip(fixtures_dir: Path, tmp_path: Path) -> None:
+    """`diff --report-json` writes a parseable JSON sidecar with the
+    LLD-pinned top-level keys plus a `diff` block."""
+    out_path = tmp_path / "diff.json"
+    report_path = tmp_path / "summary.json"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--quiet",
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "-o",
+            str(out_path),
+            "--report-json",
+            str(report_path),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+    # Top-level keys.
+    expected_keys = {
+        "versions_supplied",
+        "schemas_detected",
+        "bridge",
+        "diff",
+        "gates",
+        "warnings",
+        "config",
+        "elapsed_seconds",
+    }
+    assert expected_keys <= set(payload.keys())
+
+    # Diff block.
+    diff_block = payload["diff"]
+    for key in (
+        "added",
+        "removed",
+        "genetic_id_renamed",
+        "master_id_renamed",
+        "group_change_by_class",
+    ):
+        assert key in diff_block
+
+    # gates block carries turnover + substantive_regroup states.
+    assert payload["gates"]["turnover"] in {"pass", "warn", "fail"}
+    assert payload["gates"]["substantive_regroup"] in {"pass", "fail", "n/a"}
+
+
+def test_diff_report_json_config_echoes_flags(fixtures_dir: Path, tmp_path: Path) -> None:
+    """The 'config' block echoes the CLI-resolved flag values."""
+    out_path = tmp_path / "diff.json"
+    report_path = tmp_path / "summary.json"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--quiet",
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "-o",
+            str(out_path),
+            "--report-json",
+            str(report_path),
+            "--substantive-regroup-fail",
+            "1000",
+            "--all-events",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    config = payload["config"]
+    assert config["substantive_regroup_fail"] == 1000
+    assert config["all_events"] is True
+
+
+def test_diff_report_json_gate_fail_echoed(fixtures_dir: Path, tmp_path: Path) -> None:
+    """When the substantive-regroup gate fails, the sidecar still writes
+    and 'gates.substantive_regroup' == 'fail'."""
+    from aadr_resolve.errors import ValidationError
+    from aadr_resolve.types import GroupChangeClass
+
+    af_v54 = AnnoFrame.from_path(fixtures_dir / "loschbour_v54.anno", version_label="v54.1")
+    af_v62 = AnnoFrame.from_path(fixtures_dir / "loschbour_v62.anno", version_label="v62.0")
+    bridge = detect_bridge([af_v54, af_v62])
+    diff_result = compute_diff(af_v54, af_v62, bridge=bridge)
+    if not diff_result.group_changed_by_class.get(GroupChangeClass.SUBSTANTIVE_REGROUP, []):
+        import pytest
+
+        pytest.skip("fixture has no substantive_regroup events; gate cannot fire")
+
+    out_path = tmp_path / "diff.json"
+    report_path = tmp_path / "summary.json"
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--quiet",
+            "diff",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "-o",
+            str(out_path),
+            "--report-json",
+            str(report_path),
+            "--substantive-regroup-fail",
+            "0",
+            "--turnover-fail",
+            "1.0",
+        ],
+        catch_exceptions=True,
+    )
+    assert isinstance(result.exception, ValidationError)
+    # Sidecar written before raise.
+    assert report_path.exists()
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["gates"]["substantive_regroup"] == "fail"
+    assert payload["gates"]["substantive_regroup_count"] >= 1

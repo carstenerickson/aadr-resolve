@@ -102,6 +102,76 @@ def write_cohort_json(manifest: CohortManifest, path: Path) -> None:
     path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
 
 
+def write_report_json_summary(summary: CohortRunSummary | DiffRunSummary, path: Path) -> None:
+    """Write the v0.2 A2 `--report-json` sidecar.
+
+    JSON shape per HLD §Reports + LLD §3.14: ~few KB regardless of
+    corpus size, loadable cheaply via `json.load`. Sibling tools
+    (ancestry-pipeline-tool, CI dashboards) consume this for run-level
+    status. Cohort variant has a `cohort` block (resolution + histograms);
+    diff variant has a `diff` block (event counts + group-change-by-class).
+    `gates`, `warnings`, `config` are common to both."""
+    payload = _serialize_summary(summary)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _serialize_summary(summary: CohortRunSummary | DiffRunSummary) -> dict[str, Any]:
+    """Build the JSON-serializable dict for the report-json sidecar."""
+    schemas_detected = {
+        info.version_label: info.schema_class.value for info in summary.anno_file_info
+    }
+    bridge_block: dict[str, Any] = {
+        "auto_count": summary.bridge_auto_count,
+        "manual_count": summary.bridge_manual_count,
+        "collisions": list(summary.bridge_collisions),
+    }
+
+    if isinstance(summary, CohortRunSummary):
+        cohort_or_diff_key = "cohort"
+        cohort_or_diff_block: dict[str, Any] = {
+            "n_individuals": summary.n_individuals,
+            "n_libraries": summary.n_rows_written,
+            "n_resolved_in_latest": summary.n_resolved_in_latest,
+            "n_added_after_earliest": summary.n_added_after_earliest,
+            "n_removed_before_latest": summary.n_removed_before_latest,
+            "label_source_histogram": dict(summary.label_source_histogram),
+            "status_histogram": dict(summary.status_histogram),
+            "group_change_by_class": dict(summary.group_change_by_class),
+        }
+        gates_block = {
+            "turnover": summary.turnover_state,
+            "turnover_rate": summary.turnover_rate,
+            "cohort_coverage": summary.cohort_coverage_state,
+            "cohort_coverage_rate": summary.cohort_coverage_rate,
+        }
+    else:
+        cohort_or_diff_key = "diff"
+        cohort_or_diff_block = {
+            "added": summary.n_added,
+            "removed": summary.n_removed,
+            "genetic_id_renamed": summary.n_genetic_id_renamed,
+            "master_id_renamed": summary.n_master_id_renamed,
+            "group_change_by_class": dict(summary.group_change_by_class),
+        }
+        gates_block = {
+            "turnover": summary.turnover_state,
+            "turnover_rate": summary.turnover_rate,
+            "substantive_regroup": summary.substantive_regroup_state,
+            "substantive_regroup_count": summary.substantive_regroup_count,
+        }
+
+    return {
+        "versions_supplied": list(summary.versions_supplied),
+        "schemas_detected": schemas_detected,
+        "bridge": bridge_block,
+        cohort_or_diff_key: cohort_or_diff_block,
+        "gates": gates_block,
+        "warnings": list(summary.warnings),
+        "config": dict(summary.config),
+        "elapsed_seconds": summary.elapsed_seconds,
+    }
+
+
 def format_stdout_summary(summary: CohortRunSummary | DiffRunSummary) -> str:
     """Render the stdout summary block per HLD §Stdout summary block.
 

@@ -215,6 +215,8 @@ def build_diff_run_summary(
     turnover_gate: TurnoverGateResult,
     substantive_regroup_gate: SubstantiveRegroupGateResult,
     elapsed_seconds: float,
+    warnings: tuple[str, ...] = (),
+    config: dict[str, object] | None = None,
 ) -> DiffRunSummary:
     """Build the run-level summary for the diff stdout block + the v0.2
     A2 --report-json sidecar.
@@ -260,4 +262,7 @@ def build_diff_run_summary(
         turnover_rate=turnover_gate.removal_rate,
         substantive_regroup_state=regroup_state,
         elapsed_seconds=elapsed_seconds,
+        substantive_regroup_count=substantive_regroup_gate.count,
+        warnings=warnings,
+        config=dict(config) if config is not None else {},
     )

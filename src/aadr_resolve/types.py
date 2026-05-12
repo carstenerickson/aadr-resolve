@@ -502,6 +502,16 @@ class CohortRunSummary:
     turnover_state: str  # 'pass' / 'warn' / 'fail' / 'n/a'
     turnover_rate: float
     elapsed_seconds: float
+    # v0.2 A2 (--report-json) fields. Populated by build_cohort_run_summary;
+    # rendered by reporting.write_report_json_summary into the LLD-pinned
+    # JSON shape.
+    n_individuals: int = 0
+    label_source_histogram: dict[str, int] = field(default_factory=dict)
+    status_histogram: dict[str, int] = field(default_factory=dict)
+    cohort_coverage_state: str = "n/a"  # 'pass' / 'warn' / 'fail' / 'n/a'
+    cohort_coverage_rate: float = 0.0
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+    config: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -528,6 +538,10 @@ class DiffRunSummary:
     turnover_rate: float
     substantive_regroup_state: str  # 'pass' / 'fail' / 'n/a' (n/a when threshold=None)
     elapsed_seconds: float
+    # v0.2 A2 (--report-json) fields.
+    substantive_regroup_count: int = 0
+    warnings: tuple[str, ...] = field(default_factory=tuple)
+    config: dict[str, Any] = field(default_factory=dict)
 
 
 # === Day-3: lookup result types ===

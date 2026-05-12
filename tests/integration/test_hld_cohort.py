@@ -568,3 +568,168 @@ def test_cohort_stdout_summary_group_change_histogram_emitted(
         "substantive_regroup",
     ]
     assert any(c in stdout for c in classes)
+
+
+# === v0.2 A2: --report-json summary sidecar ===
+
+
+def test_cohort_report_json_summary_round_trip(fixtures_dir: Path, tmp_path: Path) -> None:
+    """--report-json writes a parseable JSON sidecar with the LLD-pinned
+    top-level keys."""
+    from click.testing import CliRunner
+
+    from aadr_resolve.cli import cli as cli_group
+
+    cohort_file = tmp_path / "cohort.tsv"
+    cohort_file.write_text("I0001\tLoschbour\n", encoding="utf-8")
+    out_path = tmp_path / "manifest.tsv"
+    report_path = tmp_path / "summary.json"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--quiet",
+            "cohort",
+            str(cohort_file),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v66.anno"),
+            "--cohort-version",
+            "loschbour_v54",
+            "-o",
+            str(out_path),
+            "--report-json",
+            str(report_path),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+    # Top-level keys per HLD §Reports / LLD §3.14.
+    expected_keys = {
+        "versions_supplied",
+        "schemas_detected",
+        "bridge",
+        "cohort",
+        "gates",
+        "warnings",
+        "config",
+        "elapsed_seconds",
+    }
+    assert expected_keys <= set(payload.keys())
+
+    # versions_supplied is a list.
+    assert isinstance(payload["versions_supplied"], list)
+    assert "loschbour_v54" in payload["versions_supplied"]
+
+    # schemas_detected maps each version label to a class letter.
+    assert payload["schemas_detected"]["loschbour_v54"] == "C"
+    assert payload["schemas_detected"]["loschbour_v66"] == "E"
+
+    # bridge sub-keys.
+    assert "auto_count" in payload["bridge"]
+    assert "manual_count" in payload["bridge"]
+    assert "collisions" in payload["bridge"]
+
+    # cohort block sub-keys.
+    cohort_block = payload["cohort"]
+    assert "n_individuals" in cohort_block
+    assert "n_libraries" in cohort_block
+    assert "label_source_histogram" in cohort_block
+    assert "status_histogram" in cohort_block
+    assert "group_change_by_class" in cohort_block
+
+    # gates echoes the actual run state.
+    assert payload["gates"]["turnover"] in {"pass", "warn", "fail"}
+    assert payload["gates"]["cohort_coverage"] in {"pass", "warn", "fail", "n/a"}
+
+
+def test_cohort_report_json_config_echoes_flags(fixtures_dir: Path, tmp_path: Path) -> None:
+    """The 'config' block echoes the CLI-resolved flag values."""
+    from click.testing import CliRunner
+
+    from aadr_resolve.cli import cli as cli_group
+
+    cohort_file = tmp_path / "cohort.tsv"
+    cohort_file.write_text("I0001\tLoschbour\n", encoding="utf-8")
+    out_path = tmp_path / "manifest.tsv"
+    report_path = tmp_path / "summary.json"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--quiet",
+            "cohort",
+            str(cohort_file),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "--cohort-version",
+            "loschbour_v54",
+            "-o",
+            str(out_path),
+            "--report-json",
+            str(report_path),
+            "--turnover-fail",
+            "0.50",
+            "--cohort-coverage-fail",
+            "0.0",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    config = payload["config"]
+    assert config["turnover_fail"] == 0.50
+    assert config["cohort_coverage_fail"] == 0.0
+    assert config["output_format"] == "tsv"
+
+
+def test_cohort_report_json_written_even_on_gate_fail(fixtures_dir: Path, tmp_path: Path) -> None:
+    """--report-json is written BEFORE the ValidationError raise so CI
+    can still inspect the failure shape. Force a cohort-coverage failure
+    by setting --cohort-coverage-fail 1.01 (impossible threshold)."""
+    from click.testing import CliRunner
+
+    from aadr_resolve.cli import cli as cli_group
+    from aadr_resolve.errors import ValidationError
+
+    cohort_file = tmp_path / "cohort.tsv"
+    cohort_file.write_text("I0001\tLoschbour\n", encoding="utf-8")
+    out_path = tmp_path / "manifest.tsv"
+    report_path = tmp_path / "summary.json"
+
+    runner = CliRunner()
+    result = runner.invoke(
+        cli_group,
+        [
+            "--quiet",
+            "cohort",
+            str(cohort_file),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v54.anno"),
+            "--anno-files",
+            str(fixtures_dir / "loschbour_v62.anno"),
+            "--cohort-version",
+            "loschbour_v54",
+            "-o",
+            str(out_path),
+            "--report-json",
+            str(report_path),
+            "--cohort-coverage-fail",
+            "1.01",
+        ],
+        catch_exceptions=True,
+    )
+    assert isinstance(result.exception, ValidationError)
+    # JSON sidecar is on disk even though we exited 1.
+    assert report_path.exists()
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["gates"]["cohort_coverage"] == "fail"

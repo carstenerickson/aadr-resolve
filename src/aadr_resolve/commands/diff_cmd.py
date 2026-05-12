@@ -19,7 +19,7 @@ from ..gates import (
     format_gate_message,
     format_substantive_regroup_message,
 )
-from ..reporting import format_stdout_summary
+from ..reporting import format_stdout_summary, write_report_json_summary
 from ..types import DiffResult, GroupChangeClass, SchemaClass
 
 # Stderr-warn threshold for buffered JSON size when --all-events is set.
@@ -78,6 +78,16 @@ SIZE_WARN_THRESHOLD_BYTES: int = 100 * 1024 * 1024  # 100 MB
         "Default: gate disabled (opt-in for strict CI)."
     ),
 )
+@click.option(
+    "--report-json",
+    "report_json_path",
+    type=click.Path(path_type=Path),
+    default=None,
+    help=(
+        "Write a run-level summary JSON sidecar to PATH (~few KB; "
+        "loadable via json.load by CI dashboards + sibling tools)."
+    ),
+)
 @click.pass_context
 def diff_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: tsv/json + 2 gates + summary)
     ctx: click.Context,
@@ -91,6 +101,7 @@ def diff_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: tsv/json + 2 gates + summa
     turnover_warn: float,
     turnover_fail: float,
     substantive_regroup_fail: int | None,
+    report_json_path: Path | None,
 ) -> None:
     """Structured diff between two .anno files."""
     shared = ctx.obj["shared_opts"] if ctx.obj else {}
@@ -110,6 +121,8 @@ def diff_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: tsv/json + 2 gates + summa
         v_new_path, version_label=version_label, schema_override=schema_override
     )
 
+    collected_warnings: list[str] = []
+
     bridge = detect_bridge([af_old, af_new], on_collision=on_mid_collision)
     bridge_manual_count = 0
     if mid_bridge_path is not None:
@@ -118,6 +131,7 @@ def diff_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: tsv/json + 2 gates + summa
         bridge, warnings = merge_with_overrides(bridge, overrides)
         for w in warnings:
             sys.stderr.write(f"WARNING: {w}\n")
+            collected_warnings.append(w)
 
     result = compute_diff(af_old, af_new, bridge=bridge)
 
@@ -154,6 +168,7 @@ def diff_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: tsv/json + 2 gates + summa
     failed: list[str] = []
     if gate.state == "warn":
         sys.stderr.write(f"WARNING: {msg}\n")
+        collected_warnings.append(msg)
     elif gate.state == "fail":
         failed.append(msg)
 
@@ -165,19 +180,32 @@ def diff_cmd(  # noqa: PLR0912,PLR0915 (orchestrator: tsv/json + 2 gates + summa
 
     elapsed = time.perf_counter() - t_start
 
+    summary = build_diff_run_summary(
+        result=result,
+        af_old=af_old,
+        af_new=af_new,
+        bridge=bridge,
+        bridge_manual_count=bridge_manual_count,
+        out_path=out_path,
+        output_mode="tsv" if as_tsv else "json",
+        turnover_gate=gate,
+        substantive_regroup_gate=regroup_gate,
+        elapsed_seconds=elapsed,
+        warnings=tuple(collected_warnings),
+        config={
+            "turnover_warn": turnover_warn,
+            "turnover_fail": turnover_fail,
+            "substantive_regroup_fail": substantive_regroup_fail,
+            "include_classes": list(include_classes),
+            "all_events": all_events,
+            "output_format": "tsv" if as_tsv else "json",
+        },
+    )
+
+    if report_json_path is not None:
+        write_report_json_summary(summary, report_json_path)
+
     if not quiet:
-        summary = build_diff_run_summary(
-            result=result,
-            af_old=af_old,
-            af_new=af_new,
-            bridge=bridge,
-            bridge_manual_count=bridge_manual_count,
-            out_path=out_path,
-            output_mode="tsv" if as_tsv else "json",
-            turnover_gate=gate,
-            substantive_regroup_gate=regroup_gate,
-            elapsed_seconds=elapsed,
-        )
         # When the payload is going to stdout (no -o), route the summary
         # to stderr so we don't break the JSON/TSV pipe. When -o is set,
         # stdout is free for the summary.
