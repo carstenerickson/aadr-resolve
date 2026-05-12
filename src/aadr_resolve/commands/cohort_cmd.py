@@ -10,7 +10,8 @@ import click
 from ..annoframe import AnnoFrame
 from ..bridge import detect_bridge, load_manual_bridge, merge_with_overrides
 from ..cohort import build_manifest, detect_cohort_version, parse_cohort_file
-from ..errors import UsageError
+from ..errors import UsageError, ValidationError
+from ..gates import evaluate_turnover_cohort, format_gate_message
 from ..library_token import build_all_library_identities
 from ..reporting import write_cohort_json, write_cohort_tsv
 from ..types import SchemaClass
@@ -58,6 +59,20 @@ from ..types import SchemaClass
     default="AG,DG,SG,HO,TW,BY,AA,EC,WGC,bare",
     help="Suffix priority for --collapse-to-individual (comma-separated).",
 )
+@click.option(
+    "--turnover-warn",
+    type=float,
+    default=0.05,
+    show_default=True,
+    help="Sample-removal-rate warn threshold (per consecutive version pair).",
+)
+@click.option(
+    "--turnover-fail",
+    type=float,
+    default=0.30,
+    show_default=True,
+    help="Sample-removal-rate fail threshold; exit 1 if any pair exceeds.",
+)
 @click.pass_context
 def cohort_cmd(
     ctx: click.Context,
@@ -69,6 +84,8 @@ def cohort_cmd(
     no_propagate: bool,
     collapse: bool,
     gid_preference: str,
+    turnover_warn: float,
+    turnover_fail: float,
 ) -> None:
     """Emit a cross-version cohort manifest."""
     shared = ctx.obj["shared_opts"] if ctx.obj else {}
@@ -131,3 +148,18 @@ def cohort_cmd(
 
     for w in manifest.warnings:
         sys.stderr.write(f"WARNING: {w}\n")
+
+    gates = evaluate_turnover_cohort(
+        manifest, turnover_warn=turnover_warn, turnover_fail=turnover_fail
+    )
+    failed: list[str] = []
+    for gate in gates:
+        if gate.state == "warn":
+            sys.stderr.write(
+                f"WARNING: "
+                f"{format_gate_message(gate, warn_pct=turnover_warn, fail_pct=turnover_fail)}\n"
+            )
+        elif gate.state == "fail":
+            failed.append(format_gate_message(gate, warn_pct=turnover_warn, fail_pct=turnover_fail))
+    if failed:
+        raise ValidationError("; ".join(failed))

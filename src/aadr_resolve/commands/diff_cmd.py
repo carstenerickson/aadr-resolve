@@ -11,6 +11,8 @@ import click
 from ..annoframe import AnnoFrame
 from ..bridge import detect_bridge, load_manual_bridge, merge_with_overrides
 from ..diff import compute_diff
+from ..errors import ValidationError
+from ..gates import evaluate_turnover_diff, format_gate_message
 from ..types import DiffResult, GroupChangeClass, SchemaClass
 
 # Stderr-warn threshold for buffered JSON size when --all-events is set.
@@ -46,6 +48,20 @@ SIZE_WARN_THRESHOLD_BYTES: int = 100 * 1024 * 1024  # 100 MB
         "size > 100 MB; prefer --tsv at scale."
     ),
 )
+@click.option(
+    "--turnover-warn",
+    type=float,
+    default=0.05,
+    show_default=True,
+    help="Sample-removal-rate warn threshold; stderr warning at or above.",
+)
+@click.option(
+    "--turnover-fail",
+    type=float,
+    default=0.30,
+    show_default=True,
+    help="Sample-removal-rate fail threshold; exit 1 at or above.",
+)
 @click.pass_context
 def diff_cmd(
     ctx: click.Context,
@@ -56,6 +72,8 @@ def diff_cmd(
     out_path: Path | None,
     include_classes: tuple[str, ...],
     all_events: bool,
+    turnover_warn: float,
+    turnover_fail: float,
 ) -> None:
     """Structured diff between two .anno files."""
     shared = ctx.obj["shared_opts"] if ctx.obj else {}
@@ -108,6 +126,13 @@ def diff_cmd(
         out_path.write_text(text, encoding="utf-8")
     else:
         sys.stdout.write(text)
+
+    gate = evaluate_turnover_diff(result, turnover_warn=turnover_warn, turnover_fail=turnover_fail)
+    msg = format_gate_message(gate, warn_pct=turnover_warn, fail_pct=turnover_fail)
+    if gate.state == "warn":
+        sys.stderr.write(f"WARNING: {msg}\n")
+    elif gate.state == "fail":
+        raise ValidationError(msg)
 
 
 def _format_diff_tsv(result: DiffResult) -> str:
