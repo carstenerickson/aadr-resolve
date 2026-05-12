@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import json
 from collections.abc import Iterable
 from pathlib import Path
@@ -110,25 +109,19 @@ def write_report_tsv(
     *,
     fieldnames: list[str],
 ) -> None:
-    """Stream per-event TSV to `path` via csv.DictWriter.
+    """Stream per-event TSV to `path`. Constant memory — `rows` is
+    consumed lazily (e.g. as the generator from `diff.iter_report_rows`).
 
-    Constant memory regardless of event count — `rows` is consumed
-    lazily (e.g. as the generator from `diff.iter_report_rows`). Caller
-    supplies `fieldnames`; missing keys are blank, extra keys are
-    ignored. Tab-delimited; no quoting (matches diff --tsv inline)."""
-    with path.open("w", encoding="utf-8", newline="") as f:
-        writer = csv.DictWriter(
-            f,
-            fieldnames=fieldnames,
-            delimiter="\t",
-            lineterminator="\n",
-            quoting=csv.QUOTE_NONE,
-            escapechar="\\",
-            extrasaction="ignore",
-        )
-        writer.writeheader()
+    Tab-delimited; cells written verbatim (no quoting). The cohort
+    manifest TSV is the convention here: details cells are pre-JSON-
+    encoded strings that contain embedded `"` chars; csv.DictWriter
+    with QUOTE_NONE+escapechar would backslash-escape them, diverging
+    from the v0.1 inline `--tsv` mode. Caller is responsible for
+    ensuring cell values don't contain literal tabs or newlines."""
+    with path.open("w", encoding="utf-8") as f:
+        f.write("\t".join(fieldnames) + "\n")
         for row in rows:
-            writer.writerow(row)
+            f.write("\t".join(str(row.get(col, "")) for col in fieldnames) + "\n")
 
 
 def write_report_json_summary(summary: CohortRunSummary | DiffRunSummary, path: Path) -> None:

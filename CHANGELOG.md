@@ -7,6 +7,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — reporting layer
+- **Stdout summary block** on `cohort` and `diff` (HLD §Stdout summary
+  block). Replaces the v0.1 "Wrote N rows" placeholder with a rich
+  multi-section block: loaded `.anno` files (rows/cols/class), bridge
+  counts, cohort resolution histogram OR diff event histogram,
+  group_id-change histogram by class, write line, turnover gate
+  verdict, elapsed time. `--quiet` suppresses.
+- **`--report-json PATH`** on `cohort` and `diff`: run-level JSON
+  summary sidecar (~few KB, loads cheaply via `json.load`). Shape
+  documented in [docs/REPORT_JSON_SCHEMA.md](docs/REPORT_JSON_SCHEMA.md).
+  Includes `versions_supplied`, `schemas_detected`, `bridge` block,
+  `cohort` or `diff` block (with histograms), `gates` block (with
+  state + rate echoes), `warnings`, `config` (CLI flag values echoed),
+  `elapsed_seconds`. Written BEFORE any `ValidationError` raise so CI
+  can inspect failure shapes on gate failures.
+- **`--report PATH`** on `diff`: streamed per-event TSV sidecar via
+  `diff.iter_report_rows` generator → `reporting.write_report_tsv`.
+  Constant memory regardless of event count; preferred over
+  `--all-events` at AADR scale.
+
+### Added — cohort manifest
+- **Per-adjacent-pair `group_id_change_class_v{old}_to_v{new}` columns**
+  in the cohort manifest TSV (LLD §4.1 step 11d). One column per
+  consecutive version pair; values are one of the six
+  `GroupChangeClass` values, `'none'` for unchanged group_ids, or `--`
+  when the individual is absent from either side of the pair.
+- New `n_individuals` + `label_source_histogram` + `status_histogram`
+  + `per_pair_group_change_class` fields on `ManifestRow` /
+  `CohortRunSummary`; surface via the new JSON sidecar.
+
+### CI + tooling
+- **Coverage gate**: `pytest --cov=aadr_resolve --cov-fail-under=85`
+  in the default CI matrix job. `.coveragerc` excludes orchestrator
+  click wrappers, the entry shim, and the top-level CLI group
+  (LLD §5.6); actual coverage 91.7%.
+- **Default `pytest` excludes slow / external / perf** per LLD §5.5.
+  Use `pytest -m slow` to opt in.
+- **GitHub Actions bump past Node.js 20 deprecation** (June 2026
+  cutover): `actions/checkout` v4 → v6, `actions/setup-python` v5 →
+  v6, `actions/upload-artifact` v4 → v7, `actions/download-artifact`
+  v4 → v8.
+
+### Routing
+- The `diff` stdout summary block routes to **stderr** when stdout is
+  carrying the JSON/TSV payload (no `-o`), so the pipe stays clean.
+  When `-o PATH` is set, the summary goes to stdout like cohort.
+
 ## [0.1.0] — 2026-05-12
 
 Initial release. Implements the full HLD specification end-to-end across

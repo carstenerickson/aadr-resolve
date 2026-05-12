@@ -61,8 +61,41 @@ aadr-resolve cohort patterson_2022_whga.txt \
 ```
 
 The manifest is a TSV with one row per (individual × library), with
-per-version `genetic_id` / `group_id` / `snps_hit_1240k` columns,
+per-version `genetic_id` / `group_id` / `snps_hit_1240k` columns plus
+per-adjacent-pair `group_id_change_class_v{old}_to_v{new}` columns,
 ready to feed into downstream relabeling tools like `pgen-samplebind`.
+
+Output (stdout summary block):
+
+```
+Loaded 2 .anno file(s):
+  [v44.3] v44.3_1240K_public.anno: 9,275 rows × 43 cols, class A
+  [v66.0] v66.0_1240K_public.anno: 23,250 rows × 49 cols, class E
+
+Cross-version bridge:
+  GID-stable MID-rename detection:  9 events
+  Manual --mid-bridge entries:      0
+  Cross-lab MID collision check:    no collisions detected
+
+Cohort input: patterson_2022_whga.txt (40 individuals)
+  Resolved in latest version:  37
+  Added after earliest:        1
+  Removed before latest:       2
+
+Group ID changes (v44.3 → v66.0):
+  convention_restructure_suffix      18
+  partial                             1
+  substantive_regroup                 2
+
+Wrote whga_v66_manifest.tsv (40 rows × 15 cols)
+Sample turnover within cohort: 5.0% — PASS
+
+Done in 1.4s.
+```
+
+Add `--quiet` to suppress the block. Add `--report-json summary.json`
+to also emit a run-level JSON sidecar that loads cheaply via
+`json.load` — see [docs/REPORT_JSON_SCHEMA.md](docs/REPORT_JSON_SCHEMA.md).
 
 **Structured diff between two releases.**
 
@@ -73,6 +106,21 @@ aadr-resolve diff v62.0.anno v66.0.anno --tsv > v62_to_v66_changes.tsv
 Emits one row per change event: added, removed, genetic_id_renamed,
 master_id_renamed, group_changed (with a per-class label —
 `convention_restructure_suffix` etc.).
+
+For large diffs at AADR scale, stream the per-event TSV alongside a
+small summary JSON instead of buffering the full event list:
+
+```bash
+aadr-resolve diff v62.0.anno v66.0.anno \
+    -o changes_summary.json \
+    --report changes_events.tsv \
+    --report-json summary.json
+```
+
+`--report PATH` streams one row per event (constant memory) and
+`--report-json PATH` writes the run-level summary (~few KB, loads
+cheaply via `json.load`). The diff stdout summary block routes to
+stderr when stdout is carrying the JSON payload, so pipes stay clean.
 
 ## Subcommands
 
@@ -108,13 +156,15 @@ aadr-resolve cohort COHORT_FILE \
     [--gid-preference AG,DG,SG,HO,TW,BY,AA,EC,WGC,bare]
     [--turnover-warn 0.05] [--turnover-fail 0.30]
     [--cohort-coverage-warn 0.50] [--cohort-coverage-fail 0.25]
+    [--report-json PATH]
 ```
 
 `COHORT_FILE` is a TSV: one column for `individual_id`, optional second
 column for `cohort_label`. `--cohort-version` is auto-detected from the
 supplied annos when omitted. Default output is row-per-(individual ×
 library); `--collapse-to-individual` reduces to one row per individual
-via the `--gid-preference` suffix priority.
+via the `--gid-preference` suffix priority. `--report-json PATH` writes
+a run-level summary sidecar (~few KB) for CI dashboards.
 
 ### `aadr-resolve diff`
 
@@ -126,12 +176,19 @@ aadr-resolve diff V_OLD.anno V_NEW.anno
     [--all-events]
     [--turnover-warn 0.05] [--turnover-fail 0.30]
     [--substantive-regroup-fail INT]
+    [--report PATH] [--report-json PATH]
 ```
 
 JSON output is summary-first: per-class counts always included;
 per-event arrays only for `substantive_regroup` (always) and any class
 named via `--include-class`, or all classes when `--all-events` is set.
 `--tsv` switches to streamed one-row-per-event format.
+
+For large diffs, prefer the streamed sidecars: `--report PATH` writes
+per-event TSV with constant memory; `--report-json PATH` writes the
+run-level summary. The summary block routes to stderr when stdout is
+the JSON payload, so `aadr-resolve diff a.anno b.anno | jq ...` works
+without breaking the pipe.
 
 ### `aadr-resolve join`
 
