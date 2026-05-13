@@ -1,8 +1,9 @@
 # Contributing to aadr-resolve
 
 Thanks for your interest in improving `aadr-resolve`. This document
-covers local development setup, the test layout, and the release
-process. For user-facing usage, see [README.md](README.md).
+covers local development setup, the test layout, coding conventions,
+how to file issues and PRs, and the release process. For user-facing
+usage, see [README.md](README.md).
 
 ## Development setup
 
@@ -33,6 +34,11 @@ AADR_CACHE=/path/to/cache pytest -m external -ra
 # Standalone perf benchmark with per-phase timings
 AADR_CACHE=/path/to/cache python -m benchmarks.perf_bench
 ```
+
+Most contributors only need the default suite. The external suite
+requires a local cache of real `.anno` files (set `AADR_CACHE` to a
+directory containing the filenames the tests expect, e.g.
+`v62.0_1240K_public.anno`); this is normally a maintainer-only setup.
 
 The default-suite mark filter is pinned in `pyproject.toml`
 (`[tool.pytest.ini_options].addopts`). The synth perf test runs
@@ -65,6 +71,9 @@ The `slow` job opts into `-m "slow and not external"`. External tests
 are not run in CI (no AADR cache).
 
 ## Filing issues and PRs
+
+Open issues and PRs at
+<https://github.com/carstenerickson/aadr-resolve/issues>.
 
 - Bug reports: include the AADR version(s) involved, the exact CLI
   invocation, and the full error output. If the issue is a schema

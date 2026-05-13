@@ -12,7 +12,7 @@ periodic Master-ID renames (9-18 per consecutive version pair; ~62
 cumulative v44.3 → v66.0) automatically.
 
 Designed and bench-verified against AADR releases v44.3, v50.0, v52.2,
-v54.1, v62.0, and v66.0; five schema classes (A–E) are recognised
+v54.1, v62.0, and v66.0; five schema classes (A–E) are recognized
 out-of-the-box via in-package YAML header signatures.
 
 ## Install
@@ -84,7 +84,7 @@ Group ID changes (v44.3 → v66.0):
   partial                             1
   substantive_regroup                 2
 
-Wrote whga_v66_manifest.tsv (40 rows × 15 cols)
+Wrote whga_v66_manifest.tsv (40 rows × 13 cols)
 Sample turnover within cohort: 5.0% — PASS
 
 Done in 1.4s.
@@ -97,7 +97,8 @@ to also emit a run-level JSON sidecar that loads cheaply via
 **Structured diff between two releases.**
 
 ```bash
-aadr-resolve diff v62.0.anno v66.0.anno --tsv > v62_to_v66_changes.tsv
+aadr-resolve diff v62.0_1240K_public.anno v66.0_1240K_public.anno \
+    --tsv > v62_to_v66_changes.tsv
 ```
 
 Emits one row per change event: added, removed, genetic_id_renamed,
@@ -108,7 +109,7 @@ For large diffs at AADR scale, stream the per-event TSV alongside a
 small summary JSON instead of buffering the full event list:
 
 ```bash
-aadr-resolve diff v62.0.anno v66.0.anno \
+aadr-resolve diff v62.0_1240K_public.anno v66.0_1240K_public.anno \
     -o changes_summary.json \
     --report changes_events.tsv \
     --report-json summary.json
@@ -259,6 +260,10 @@ result = resolve_genetic_ids(
 # result = {"I0001": ["Loschbour.AG", "Loschbour.DG"]}  # multi-row IID
 ```
 
+Both functions also accept `anno_frames={label: AnnoFrame, ...}` as an
+alternative to `anno_paths={label: path, ...}` — useful when you've
+already loaded the frames once and want to reuse them across calls.
+
 Direct `AnnoFrame` access for lower-level work:
 
 ```python
@@ -341,9 +346,14 @@ upgrade if you're on an older version.
 
 ## Composition with the broader ecosystem
 
+The manifest TSV is the handoff format to downstream relabeling tools.
+Typical pipeline pairing aadr-resolve's join output with a PLINK2
+sample-rename step:
+
 ```bash
 aadr-resolve cohort patterson_2022.txt \
-    --anno-files v44.3.anno --anno-files v66.0.anno \
+    --anno-files v44.3_1240K_public.anno \
+    --anno-files v66.0_1240K_public.anno \
     -o cohort_manifest.tsv
 pgen-samplebind merge \
     --relabel-from cohort_manifest.tsv \
