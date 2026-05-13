@@ -273,7 +273,7 @@ af = AnnoFrame.from_path("v66.0_1240K_public.anno", version_label="v66.0")
 af.schema_class       # SchemaClass.E
 af.individual_id      # pd.Series of canonical IIDs
 af.genetic_id         # pd.Series
-af.persistent_genetic_id  # pd.Series of Int64 nullable (E only; all-NaN elsewhere)
+af.persistent_genetic_id  # pd.Series of Int64 nullable for class E; None for A-D
 af.date_calbp         # pd.Series of Int64 nullable
 af.coverage           # pd.Series of Float64 nullable
 af.path               # original Path, useful for re-creating anno_paths dicts
@@ -388,6 +388,7 @@ nullable-Int64 numerics).
 - [DEVELOPMENT.md](DEVELOPMENT.md) is the architecture tour —
   module map, data flow, key abstractions, invariants. Start there
   before filing a non-trivial PR.
+- [ROADMAP.md](ROADMAP.md) tracks deferred work and known scope-cuts.
 
 ## License
 

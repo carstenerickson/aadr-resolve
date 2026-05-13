@@ -17,7 +17,7 @@ Module paths throughout are relative to `src/aadr_resolve/`.
 - [5. Invariants and behavioral pins](#5-invariants-and-behavioral-pins)
 - [6. Testing strategy](#6-testing-strategy)
 - [7. Gotchas](#7-gotchas)
-- [8. Roadmap and deferred work](#8-roadmap-and-deferred-work)
+- [8. Roadmap](#8-roadmap)
 
 ## 1. Mental model
 
@@ -142,32 +142,43 @@ classes in fixed priority order, first match wins:
 
 ## 2. Module map
 
-17 modules, ~5000 LOC. Organized in dependency layers, bottom-up:
+17 modules, ~5000 LOC. Organized in dependency layers, bottom-up.
+The "Imports" column lists top-level imports only — a few modules
+defer specific imports into method bodies to break circular deps
+(e.g., `annoframe.AnnoFrame.from_path` does a local `from .loader
+import read_anno`); those are noted as "(local)".
 
-| Module | Concern | Imports? |
-|--------|---------|----------|
-| `types.py` | All shared dataclasses + enums | nothing in-package |
-| `errors.py` | Exception hierarchy + exit codes | nothing |
+| Module | Concern | Imports |
+|--------|---------|---------|
+| `types.py` | All shared dataclasses + enums | (stdlib only) |
+| `errors.py` | Exception hierarchy + exit codes | (stdlib only) |
 | `schema.py` | YAML registry load + signature dispatch | `types`, `errors` |
 | `schemas/*.yaml` | Per-class field maps (ship in the wheel) | — |
 | `version_inference.py` | Filename → version label | `types`, `errors` |
-| `loader.py` | End-to-end `.anno` reader | `schema`, `version_inference` |
-| `annoframe.py` | Typed accessor over loaded `.anno` | `types`, `loader`, `date_norm`, `coverage_norm` |
+| `loader.py` | End-to-end `.anno` reader | `types`, `errors`, `schema`, `version_inference`; `annoframe` (local) |
+| `annoframe.py` | Typed accessor over loaded `.anno` | `types`; `loader`, `date_norm`, `coverage_norm` (local) |
 | `date_norm.py` | Int64-nullable date normalization | `types` |
 | `coverage_norm.py` | Float64 coverage with per-class routing | `types`, `errors` |
-| `bridge.py` | MID-rename detection + manual overrides | `annoframe`, `types`, `errors` |
-| `library_token.py` | Cross-version library identity chain | `annoframe`, `bridge`, `types` |
+| `bridge.py` | MID-rename detection + manual overrides | `types`, `errors`, `annoframe` |
+| `library_token.py` | Cross-version library identity chain | `types`, `annoframe` |
 | `group_classifier.py` | Six-class group_id-change classification | `types` |
-| `lookup.py` | Single-sample resolution business logic | `annoframe`, `bridge`, `types` |
-| `diff.py` | Diff computation + per-event streaming | `annoframe`, `bridge`, `group_classifier`, `types` |
-| `cohort.py` | Cohort manifest construction (the biggest) | most of the above |
-| `join.py` | Wide-form pairwise table (thin wrapper over cohort) | `cohort`, `annoframe`, `bridge`, `types` |
-| `gates.py` | All exit-1 validation gates | `types`, `errors` |
+| `lookup.py` | Single-sample resolution business logic | `types`, `annoframe` |
+| `diff.py` | Diff computation + per-event streaming | `types`, `annoframe`, `gates`, `group_classifier` |
+| `cohort.py` | Cohort manifest construction (the biggest) | `types`, `errors`, `annoframe`, `date_norm`, `gates`, `group_classifier`, `library_token` |
+| `join.py` | Wide-form pairwise table (thin wrapper over cohort) | `types`, `annoframe`, `bridge`, `cohort`, `library_token` |
+| `gates.py` | All exit-1 validation gates | `types` |
 | `reporting.py` | TSV/JSON writers + stdout summary renderer | `types` |
-| `cli.py` | Click root group + `main()` + exit-code mapping | `commands/*`, `errors` |
+| `cli.py` | Click root group + `main()` + exit-code mapping | `errors`, `schema`, `types`, `commands/*` |
 | `commands/*.py` | Thin click wrappers per subcommand | core modules + `reporting` + `gates` |
 | `__init__.py` | Library API surface (`resolve_*` functions, re-exports) | most of the above |
 | `__main__.py` | `python -m aadr_resolve` shim | `cli` |
+
+Note that `MIDBridge` is defined in `types.py`, not in `bridge.py`,
+so several modules that operate on bridges (e.g., `library_token`,
+`lookup`, `gates`) take a `MIDBridge` from `.types` without importing
+`bridge.py` at all. `bridge.py` is only imported where the
+*construction* functions (`detect_bridge`, `load_manual_bridge`,
+`merge_with_overrides`, `compute_canonical_version`) are needed.
 
 ### Layers
 
@@ -263,8 +274,10 @@ fail-state accumulation.
    — partitions into added / removed / genetic_id_renamed /
    master_id_renamed / group_changed_by_class.
 3. Output:
-   - `--tsv` (one row per event): `_format_diff_tsv` (in-memory) or
-     `diff.iter_report_rows` (generator) depending on path.
+   - `--tsv` (one row per event): the orchestrator's
+     `_format_diff_tsv` (in `commands/diff_cmd.py`) builds the full
+     TSV in memory by iterating `diff.iter_report_rows`. This path
+     is used when the payload may go to stdout.
    - `--json` default: `DiffResult.to_dict(include_class=…, all_events=…)`.
      `--all-events` triggers `DiffResult.predict_json_size_bytes`
      warning at >100 MB.
@@ -316,8 +329,10 @@ copies:
 
 - Identity columns as `string` dtype: `genetic_id`, `individual_id`,
   `group_id`
-- `persistent_genetic_id` as `Int64` nullable (returns all-NaN on
-  non-E classes)
+- `persistent_genetic_id` as `Int64` nullable — **returns `None`**
+  (not a Series) for classes A–D; only class E carries the column
+- `coverage` returns an all-NaN `Float64` Series of length `n_rows`
+  for class D (no native column); A/B/C/E have real data
 - `date_calbp` / `date_sd_bp` as `Int64`
 - `coverage` / `coverage_via(field)` as `Float64`
 
@@ -368,8 +383,9 @@ member.
 
 `schema.load_all_schemas()` enforces signature-uniqueness across the
 registry at load time — two classes sharing `(ncols, sig_0, sig_1)`
-is `InvariantViolation`. `cli.main` pre-warms this (~5 ms) so YAML
-parse failures surface immediately rather than mid-subcommand.
+is `InvariantViolation`. `cli.main` pre-warms the registry at
+startup so YAML parse failures surface immediately rather than
+mid-subcommand.
 
 ### `LibraryToken` + `LibraryIdentityResult` (`types.py`)
 
@@ -399,9 +415,11 @@ invocations.
   individual is absent from either side.
 - `persistent_genetic_id: int | None` — the latest E-class PGID
   (`None` if no E-class library row carries one).
-- `status` — `present_all` / `present_some` / `added_after_v_X` /
-  `removed_before_v_X` / `library_chain_ambiguous` /
-  `not_in_any_supplied_version`.
+- `status` — `present_all` / `present_some` /
+  `added_after_v{prefix}` / `removed_before_v{prefix}` /
+  `library_chain_ambiguous` / `not_in_any_supplied_version`. The
+  `{prefix}` slot is the version-column prefix (`v44_3`, `v66_0`,
+  with the dot replaced by underscore).
 
 `CohortManifest` wraps `rows: tuple[ManifestRow, ...]` +
 `versions_supplied` + `warnings`.
@@ -705,8 +723,6 @@ Sharp edges that have tripped up developers.
 - **Concurrency contract is unimplemented.** The output file has no
   advisory lock; two parallel runs against the same `-o` path will
   clobber. Don't write tests that depend on coordination.
-- **`Edit` requires a prior `Read`** when working with the Claude
-  Code agent harness — irrelevant for humans, traps agent workflows.
 - **The `gates` dict on `DiffResult` is unused.** The
   inline-on-result gate-state field was deferred; gates live in
   orchestrator state and run-summary dataclasses. Leave the field
@@ -715,53 +731,13 @@ Sharp edges that have tripped up developers.
   canonicalize cohort IIDs. Day-10 regression: naive raw-IID lookup
   under-counted because the cohort file used pre-rename MIDs.
 
-## 8. Roadmap and deferred work
+## 8. Roadmap
 
-Explicitly deferred from v0.2, candidates for v0.3 if real-world
-dogfood surfaces the need.
-
-### Larger items
-
-- **Concurrency contract** — `src/aadr_resolve/concurrency.py` does
-  not exist. No subcommand acquires an `fcntl.flock` on the output
-  path. Parallel invocations against the same `-o` will clobber.
-- **Schema-detection low-confidence gate** — the fuzzy-fallback
-  exit-1 path is unimplemented; current behavior is hard-fail
-  (exit 3) on any unknown header signature. Would require
-  refactoring `schema.detect_class` to allow nearest-class fallback.
-- **`RunPolicy` / `RunContext` orchestration types** — currently
-  inline option-marshalling via `ctx.obj["shared_opts"]`. v0.2 added
-  per-orchestrator `*RunSummary` types on the *output* side; the
-  *input* side stays inline. Functionally equivalent, structurally
-  different from the original spec.
-- **Rule C transitive bridge** — for bare-numeric → suffixed
-  promotion across a version gap (e.g., v44.3 → v66.0 directly,
-  skipping v62.0), neither Rule A nor Rule B fires for the
-  `I0001 ↔ Loschbour.AG` chain. v0.2's algorithm honestly produces
-  orphan rows; Rule C (transitive bridge via MID-rename for the
-  bare-to-AG promotion) would close the gap.
-
-### Smaller items
-
-- **N-version `join` wide-form** — `join` is currently pairwise.
-  `cohort` already supports N versions; revisit if dogfood demands.
-- **Coverage CLI exposure** — `AnnoFrame.coverage_via` is library-
-  only. No CLI flag.
-- **`--missing-sentinel STRING` CLI flag** — `--` is hardcoded.
-  Loader warns when it observes a literal `--` cell.
-- **`.snp` cross-version diff** — v0.2 is `.anno`-only.
-- **Population-label normalization, free-text Full Date parsing,
-  HumanOrigins-specific comparison** — out of scope for v0.2.
-
-### Drift between spec and code (not regressions, just noteworthy)
-
-- Test layout uses behavior-numbered integration files rather than
-  the per-module unit-test files originally specified.
-- The `schema-sync-check` CI job and `scripts/sync_schemas.sh` from
-  the spec don't exist; schemas live only at
-  `src/aadr_resolve/schemas/`.
-- The publish workflow is `.github/workflows/publish.yml`; the spec
-  named it `release.yml`.
+Deferred work — concurrency contract, low-confidence schema gate,
+`RunPolicy`/`RunContext` types, Rule C transitive bridge, N-version
+join, coverage CLI exposure, `--missing-sentinel` flag, `.snp` diff,
+and noted drift between spec and code — lives in
+[ROADMAP.md](ROADMAP.md).
 
 ---
 
