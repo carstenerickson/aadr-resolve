@@ -122,29 +122,33 @@ string is the most-recent-version's full GID for the chain — chosen
 because stems alone collide between suffix classes, and suffix-only
 strings collide within a suffix class, but a full GID is unique.
 
-Worked example — the running Loschbour individual across three
-versions, with edges labeled by which rule fired:
+Worked examples — Individual A demonstrates the canonical Rule
+A + Rule B chain (single-library individual whose ID was promoted
+then renamed); Individual B demonstrates Trivial pairing for a
+library whose ID never changed:
 
 ```mermaid
 flowchart LR
-    subgraph v44 [v44.3]
-        v44_bare[I0001 bare]
+    subgraph A [Individual A: bare to suffixed to renamed]
+        direction LR
+        v44a[v44.3<br/>I0001<br/>bare]
+        v62a[v62.0<br/>I0001.AG]
+        v66a[v66.0<br/>Loschbour.AG]
     end
-    subgraph v62 [v62.0]
-        v62_AG[I0001.AG]
-        v62_DG[I0001.DG]
-        v62_snp[I0001_snpAD.DG]
+    subgraph B [Individual B: stable identity]
+        direction LR
+        v62b[v62.0<br/>Bichon.SG]
+        v66b[v66.0<br/>Bichon.SG]
     end
-    subgraph v66 [v66.0]
-        v66_AG[Loschbour.AG]
-        v66_DG[Loschbour.DG]
-        v66_snp[Loschbour_snpAD.DG]
-    end
-    v44_bare -.->|Rule A: bare to suffixed, same stem| v62_AG
-    v62_AG ==>|Rule B: single .AG each side, stems differ| v66_AG
-    v62_DG ==>|Rule B| v66_DG
-    v62_snp -->|Trivial: same stem+suffix| v66_snp
+    v44a -.->|Rule A: bare to suffixed,<br/>exactly one match in v_new| v62a
+    v62a ==>|Rule B: single .AG each side,<br/>stems differ| v66a
+    v62b -->|Trivial: identical stem+suffix| v66b
 ```
+
+Note that Rule A and Rule B both require exactly one candidate in
+the receiving version — when an individual has multiple libraries
+of the same suffix class, the chain only forms for that class if
+the algorithm can unambiguously pair them.
 
 ### Six group_id-change classes
 
@@ -168,15 +172,15 @@ The first-match-wins pipeline visualized:
 
 ```mermaid
 flowchart TD
-    Start([group_v_old != group_v_new]) --> S1{Differs only by suffix?<br/>.AG/.SG/.DG/.HO/.TW/.BY}
+    Start([group_v_old != group_v_new]) --> S1{Differs only by a known suffix?<br/>.AG / .DG / .SG / .HO / .TW /<br/>.BY / .AA / .EC / .WGC}
     S1 -->|yes| C1[convention_restructure_suffix]
-    S1 -->|no| S2{Country known-list?<br/>Czech to Czechia, etc.}
+    S1 -->|no| S2{Known country rename?<br/>Currently only Czech to Czechia}
     S2 -->|yes| C2[convention_restructure_country]
-    S2 -->|no| S3{Same tokens,<br/>different order?}
+    S2 -->|no| S3{Same underscore tokens,<br/>different order?}
     S3 -->|yes| C3[convention_restructure_order]
     S3 -->|no| S4{Underscore-hyphen swap?}
     S4 -->|yes| C4[convention_restructure_punct]
-    S4 -->|no| S5{Strict subset/superset?}
+    S4 -->|no| S5{Strict subset/superset<br/>of underscore tokens?}
     S5 -->|yes| C5[partial]
     S5 -->|no| C6[substantive_regroup]
 ```
@@ -235,26 +239,35 @@ flowchart TD
     lookup --> annoframe
     diff --> annoframe
     diff --> gates
+    diff --> gclass
     cohort --> annoframe
     cohort --> libtok
     cohort --> gates
+    cohort --> gclass
+    cohort --> date_norm
     join --> cohort
     join --> bridge
+    join --> libtok
     gates --> types
     reporting --> types
     commands --> reporting
     commands --> cohort
     commands --> diff
+    commands --> lookup
+    commands --> join
+    commands --> bridge
     cli --> commands
     init --> annoframe
     init --> bridge
 ```
 
-The table below has the full per-module detail. The "Imports" column
-lists top-level imports only — a few modules defer specific imports
-into method bodies to break circular deps (e.g.,
-`annoframe.AnnoFrame.from_path` does a local `from .loader import
-read_anno`); those are noted as "(local)".
+Cross-layer edges shown; almost every module also imports from
+`types` (and many from `errors`) — those edges are omitted from the
+diagram for legibility but are listed in the per-module table
+below. The "Imports" column lists top-level imports only — a few
+modules defer specific imports into method bodies to break circular
+deps (e.g., `annoframe.AnnoFrame.from_path` does a local
+`from .loader import read_anno`); those are noted as "(local)".
 
 | Module | Concern | Imports |
 |--------|---------|---------|
