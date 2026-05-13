@@ -122,6 +122,30 @@ string is the most-recent-version's full GID for the chain — chosen
 because stems alone collide between suffix classes, and suffix-only
 strings collide within a suffix class, but a full GID is unique.
 
+Worked example — the running Loschbour individual across three
+versions, with edges labeled by which rule fired:
+
+```mermaid
+flowchart LR
+    subgraph v44 [v44.3]
+        v44_bare[I0001 bare]
+    end
+    subgraph v62 [v62.0]
+        v62_AG[I0001.AG]
+        v62_DG[I0001.DG]
+        v62_snp[I0001_snpAD.DG]
+    end
+    subgraph v66 [v66.0]
+        v66_AG[Loschbour.AG]
+        v66_DG[Loschbour.DG]
+        v66_snp[Loschbour_snpAD.DG]
+    end
+    v44_bare -.->|Rule A: bare to suffixed, same stem| v62_AG
+    v62_AG ==>|Rule B: single .AG each side, stems differ| v66_AG
+    v62_DG ==>|Rule B| v66_DG
+    v62_snp -->|Trivial: same stem+suffix| v66_snp
+```
+
 ### Six group_id-change classes
 
 Naive `group_v_old != group_v_new` emits ~16k events at v62→v66 (100%
@@ -140,13 +164,97 @@ classes in fixed priority order, first match wins:
 
 **Reordering the list changes results.** Pinned by spec.
 
+The first-match-wins pipeline visualized:
+
+```mermaid
+flowchart TD
+    Start([group_v_old != group_v_new]) --> S1{Differs only by suffix?<br/>.AG/.SG/.DG/.HO/.TW/.BY}
+    S1 -->|yes| C1[convention_restructure_suffix]
+    S1 -->|no| S2{Country known-list?<br/>Czech to Czechia, etc.}
+    S2 -->|yes| C2[convention_restructure_country]
+    S2 -->|no| S3{Same tokens,<br/>different order?}
+    S3 -->|yes| C3[convention_restructure_order]
+    S3 -->|no| S4{Underscore-hyphen swap?}
+    S4 -->|yes| C4[convention_restructure_punct]
+    S4 -->|no| S5{Strict subset/superset?}
+    S5 -->|yes| C5[partial]
+    S5 -->|no| C6[substantive_regroup]
+```
+
 ## 2. Module map
 
-17 modules, ~5000 LOC. Organized in dependency layers, bottom-up.
-The "Imports" column lists top-level imports only — a few modules
-defer specific imports into method bodies to break circular deps
-(e.g., `annoframe.AnnoFrame.from_path` does a local `from .loader
-import read_anno`); those are noted as "(local)".
+17 modules, ~5000 LOC. Organized in dependency layers, bottom-up:
+
+```mermaid
+flowchart TD
+    subgraph base [Base layer]
+        types[types.py]
+        errors[errors.py]
+    end
+    subgraph schema_layer [Schema + loader]
+        schema[schema.py]
+        vinf[version_inference.py]
+        loader[loader.py]
+    end
+    subgraph typed [Typed accessors]
+        annoframe[annoframe.py]
+        date_norm[date_norm.py]
+        coverage_norm[coverage_norm.py]
+    end
+    subgraph detection [Detection]
+        bridge[bridge.py]
+        libtok[library_token.py]
+        gclass[group_classifier.py]
+    end
+    subgraph core [Core operations]
+        lookup[lookup.py]
+        diff[diff.py]
+        cohort[cohort.py]
+        join[join.py]
+        gates[gates.py]
+    end
+    subgraph output [Output]
+        reporting[reporting.py]
+    end
+    subgraph cli_layer [CLI + orchestration]
+        cli[cli.py]
+        commands["commands/*_cmd.py"]
+        init[__init__.py]
+    end
+    schema --> types
+    schema --> errors
+    vinf --> types
+    loader --> schema
+    loader --> vinf
+    annoframe --> types
+    date_norm --> types
+    coverage_norm --> types
+    bridge --> annoframe
+    libtok --> annoframe
+    gclass --> types
+    lookup --> annoframe
+    diff --> annoframe
+    diff --> gates
+    cohort --> annoframe
+    cohort --> libtok
+    cohort --> gates
+    join --> cohort
+    join --> bridge
+    gates --> types
+    reporting --> types
+    commands --> reporting
+    commands --> cohort
+    commands --> diff
+    cli --> commands
+    init --> annoframe
+    init --> bridge
+```
+
+The table below has the full per-module detail. The "Imports" column
+lists top-level imports only — a few modules defer specific imports
+into method bodies to break circular deps (e.g.,
+`annoframe.AnnoFrame.from_path` does a local `from .loader import
+read_anno`); those are noted as "(local)".
 
 | Module | Concern | Imports |
 |--------|---------|---------|
