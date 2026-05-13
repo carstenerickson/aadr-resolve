@@ -3,7 +3,8 @@
 Thanks for your interest in improving `aadr-resolve`. This document
 covers local development setup, the test layout, coding conventions,
 how to file issues and PRs, and the release process. For user-facing
-usage, see [README.md](README.md).
+usage, see [README.md](README.md); for the architectural orientation
+(module map, data flow, invariants), see [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## Development setup
 

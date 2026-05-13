@@ -382,9 +382,12 @@ nullable-Int64 numerics).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup,
-the test layout (default / slow / external / perf markers), lint and
-type-check invocations, and the release process.
+- [CONTRIBUTING.md](CONTRIBUTING.md) covers local development setup,
+  the test layout (default / slow / external / perf markers), lint
+  and type-check invocations, and the release process.
+- [DEVELOPMENT.md](DEVELOPMENT.md) is the architecture tour —
+  module map, data flow, key abstractions, invariants. Start there
+  before filing a non-trivial PR.
 
 ## License
 
