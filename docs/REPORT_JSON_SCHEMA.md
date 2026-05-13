@@ -118,9 +118,10 @@ Present only when emitted by `aadr-resolve diff`.
 }
 ```
 
-The `substantive_regroup` state is `"n/a"` when `--substantive-regroup-fail`
-is not set (HLD default — gate disabled). When set, state is `"pass"`
-unless the count exceeds the threshold, then `"fail"`.
+The `substantive_regroup` state is `"n/a"` when
+`--substantive-regroup-fail` is not set (the default — gate disabled).
+When set, state is `"pass"` unless the count exceeds the threshold,
+then `"fail"`.
 
 ## `config` block
 

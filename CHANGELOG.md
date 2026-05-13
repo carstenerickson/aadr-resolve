@@ -10,15 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.2.0] — 2026-05-12
 
 Reporting layer + polish. Closes the biggest doc/code gap in v0.1 by
-delivering the HLD-pinned stdout summary block, the per-event TSV
-streaming sidecar, and the run-level JSON summary sidecar. Plus the
-cohort manifest per-adjacent-pair `group_id_change_class` columns,
-CI coverage gate, and the GitHub Actions Node.js 24 bump.
+delivering the stdout summary block, the per-event TSV streaming
+sidecar, and the run-level JSON summary sidecar. Plus the cohort
+manifest per-adjacent-pair `group_id_change_class` columns, a CI
+coverage gate, and the GitHub Actions Node.js 24 bump.
 
 ### Added — reporting layer
-- **Stdout summary block** on `cohort` and `diff` (HLD §Stdout summary
-  block). Replaces the v0.1 "Wrote N rows" placeholder with a rich
-  multi-section block: loaded `.anno` files (rows/cols/class), bridge
+- **Stdout summary block** on `cohort` and `diff`. Replaces the v0.1
+  "Wrote N rows" placeholder with a rich multi-section block: loaded
+  `.anno` files (rows/cols/class), bridge
   counts, cohort resolution histogram OR diff event histogram,
   group_id-change histogram by class, write line, turnover gate
   verdict, elapsed time. `--quiet` suppresses.
@@ -37,7 +37,7 @@ CI coverage gate, and the GitHub Actions Node.js 24 bump.
 
 ### Added — cohort manifest
 - **Per-adjacent-pair `group_id_change_class_v{old}_to_v{new}` columns**
-  in the cohort manifest TSV (LLD §4.1 step 11d). One column per
+  in the cohort manifest TSV. One column per
   consecutive version pair; values are one of the six
   `GroupChangeClass` values, `'none'` for unchanged group_ids, or `--`
   when the individual is absent from either side of the pair.
@@ -48,9 +48,9 @@ CI coverage gate, and the GitHub Actions Node.js 24 bump.
 ### CI + tooling
 - **Coverage gate**: `pytest --cov=aadr_resolve --cov-fail-under=85`
   in the default CI matrix job. `.coveragerc` excludes orchestrator
-  click wrappers, the entry shim, and the top-level CLI group
-  (LLD §5.6); actual coverage 91.7%.
-- **Default `pytest` excludes slow / external / perf** per LLD §5.5.
+  click wrappers, the entry shim, and the top-level CLI group;
+  actual coverage 91.7%.
+- **Default `pytest` excludes slow / external / perf markers**.
   Use `pytest -m slow` to opt in.
 - **GitHub Actions bump past Node.js 20 deprecation** (June 2026
   cutover): `actions/checkout` v4 → v6, `actions/setup-python` v5 →
@@ -64,9 +64,8 @@ CI coverage gate, and the GitHub Actions Node.js 24 bump.
 
 ## [0.1.0] — 2026-05-12
 
-Initial release. Implements the full HLD specification end-to-end across
-five subcommands, the library API surface, the validation gate suite,
-and CI matrix.
+Initial release. Five subcommands, the library API surface, the
+validation gate suite, and a CI matrix.
 
 ### Subcommands
 - `lookup`: single-sample resolution across N versions with the
@@ -120,15 +119,14 @@ and CI matrix.
   `UsageError`.
 
 ### Performance + CI
-- HLD test 42 perf benchmark: <2s wallclock single-core M2 for full
-  v44.3 → v66.0 cohort (40-sample WHGA).
+- Perf benchmark: <2s wallclock single-core M2 for full v44.3 → v66.0
+  cohort (40-sample WHGA).
 - GitHub Actions matrix: Ubuntu + macOS × Python 3.11/3.12/3.13.
 - Standalone perf runner with per-phase timings.
 
 ### Tests
-- 153 passing tests covering HLD tests 1-41 (one per HLD-numbered test)
+- 153 passing tests covering behavioral specification end-to-end
   plus implementation-detail coverage.
-- External-gated tests (`@pytest.mark.external`): HLD tests 23
-  (v62↔v66 diff regression), 25 (pgen-samplebind handoff), 26
-  (calibration anchor resolution), 42 (real-AADR perf), and the
-  WHGA self-dogfood pass.
+- External-gated tests (`@pytest.mark.external`): v62↔v66 diff
+  regression, pgen-samplebind handoff, calibration anchor resolution,
+  real-AADR perf, and the WHGA self-dogfood pass.

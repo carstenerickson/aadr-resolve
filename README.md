@@ -11,12 +11,9 @@ de-anonymization (`I0001` in v44.3 → `Loschbour.AG` in v66) and the
 periodic Master-ID renames (9-18 per consecutive version pair; ~62
 cumulative v44.3 → v66.0) automatically.
 
-The HLD pins behavior and the LLD pins implementation; both live in the
-companion wiki:
-
-- HLD: `cs-wiki/projects/aadr-resolve.md`
-- LLD: `cs-wiki/projects/aadr-resolve-lld.md`
-- Bench-verify report: `cs-wiki/projects/aadr-resolve-bench-verify.md`
+Designed and bench-verified against AADR releases v44.3, v50.0, v52.2,
+v54.1, v62.0, and v66.0; five schema classes (A–E) are recognised
+out-of-the-box via in-package YAML header signatures.
 
 ## Install
 
@@ -223,7 +220,7 @@ These apply to all subcommands:
 | `--version-label LABEL`      | auto    | Force version label (when filename pattern doesn't match)     |
 | `--mid-bridge FILE`          | none    | Manual master_id-rename TSV layered on auto-detected bridge   |
 | `--on-mid-collision {error,warn}` | error | Cross-lab MID collision policy                                |
-| `--quiet`                    | false   | Suppress the "Wrote N rows" progress line                     |
+| `--quiet`                    | false   | Suppress the stdout summary block (cohort + diff + join write phase) |
 
 ## Library API
 
@@ -245,6 +242,7 @@ result = resolve_master_ids(
         "v44.3": "v44.3_1240K_public.anno",
         "v66.0": "v66.0_1240K_public.anno",
     },
+    mid_bridge="manual_renames.tsv",  # optional override TSV
 )
 # result = {"I0001": "Loschbour.AG", "Bichon": "Bichon.SG", "Mota": None}
 ```
@@ -330,6 +328,12 @@ are being compared. Override with `--turnover-fail 1.0` to disable.
 resolved in the supplied versions. Usually means the cohort file uses
 IDs from a version not in the supplied set. Check `--cohort-version`.
 
+**"substantive_regroup gate (fail)"** — only fires on `diff` when
+`--substantive-regroup-fail INT` is set and the count of
+`substantive_regroup` events exceeds the threshold. Inspect the events
+via `--report PATH` or `--include-class substantive_regroup` before
+adjusting the threshold.
+
 **Pandas ParserError on a v52 / v54 `.anno`** — these versions contain
 embedded quote characters in some `full_date` cells. aadr-resolve reads
 with `csv.QUOTE_NONE` to side-step pandas's default quote-handling;
@@ -347,36 +351,30 @@ pgen-samplebind merge \
     v44.3.pgen v66.0.pgen
 ```
 
-The manifest's column layout is documented in HLD §Output: cohort.
+## Cohort manifest column layout
 
-## Development
+Stable column order across versions:
 
-```bash
-git clone https://github.com/carstenerickson/aadr-resolve
-cd aadr-resolve
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+1. `cohort_label`, `cohort_label_source`, `individual_id_canonical`,
+   `library_token`
+2. Per-version triples in user-supplied order:
+   `v{X}_genetic_id`, `v{X}_group_id`, `v{X}_snps_hit_1240k`
+3. Per-adjacent-pair classifier columns:
+   `group_id_change_class_v_{old}_to_v_{new}` (one per consecutive pair;
+   values: `convention_restructure_{suffix,country,order,punct}`,
+   `partial`, `substantive_regroup`, `none`, or `--` if absent)
+4. `persistent_genetic_id` (only when the latest version is class E and
+   at least one row has a value)
+5. `status`
 
-# Default suite (fast; ~10s)
-pytest -ra
+Missing-cell sentinel is `--` for every column (both string fields and
+nullable-Int64 numerics).
 
-# Slow tests (synth perf benchmark)
-pytest -m slow -ra
+## Contributing
 
-# External tests (real AADR files; requires AADR_CACHE env var)
-AADR_CACHE=/path/to/cache pytest -m external -ra
-
-# Standalone perf benchmark with per-phase timings
-AADR_CACHE=/path/to/cache python -m benchmarks.perf_bench
-
-# Lint + format + types
-ruff check src/ tests/
-ruff format --check src/ tests/
-mypy src/
-```
-
-CI runs the default suite across Python 3.11/3.12/3.13 × Ubuntu+macOS;
-see `.github/workflows/ci.yml`.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for local development setup,
+the test layout (default / slow / external / perf markers), lint and
+type-check invocations, and the release process.
 
 ## License
 
