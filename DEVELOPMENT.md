@@ -63,8 +63,9 @@ IID join because one individual has multiple PGIDs.
 ### Schema classes A–E
 
 AADR's `.anno` column layout changed non-monotonically across
-releases. Five empirically bench-verified classes are pinned in
-`schemas/class_{A..E}.yaml` (shipped in the wheel):
+releases. Five classes — derived from inspecting real `.anno`
+headers across releases v44.3, v50.0, v52.2, v54.1, v62.0, v66.0 —
+are pinned in `schemas/class_{A..E}.yaml` (shipped in the wheel):
 
 | Class | Versions | ncols | Distinctive feature |
 |-------|----------|-------|---------------------|
@@ -166,7 +167,14 @@ classes in fixed priority order, first match wins:
 5. `partial` — components are a strict subset/superset
 6. `substantive_regroup` — the actually-interesting catchall
 
-**Reordering the list changes results.** Pinned by spec.
+**Reordering the list changes results** — e.g., a `Czech_BA` →
+`Czechia_BronzeAge` transition matches `convention_restructure_country`
+under the current order, but would match `convention_restructure_order`
+(misleadingly) if the country rule ran after the token-reorder
+check. The order is treated as part of the public contract: changing
+it would silently reclassify previously-stable events. Bump a
+minor version and call it out in the changelog if the order ever
+needs to change.
 
 The first-match-wins pipeline visualized:
 
@@ -600,8 +608,9 @@ code.**
 ## 5. Invariants and behavioral pins
 
 These are non-obvious constraints that affect implementation
-decisions. Many are bench-verified against real AADR files; changing
-them needs careful review.
+decisions. Many were chosen after observing how real AADR releases
+behave; changing them needs careful review (and a regression test
+against the version that motivated the constraint).
 
 ### I/O and parsing
 
@@ -756,7 +765,10 @@ Default suite is ~175 tests in ~10 s.
 - `tests/integration/` — one file per behavioral category, all
   prefixed `test_hld_*`: loader, three-id, mid-rename, library-api,
   cohort, diff, join, turnover-gate, date-coverage, dogfood,
-  ancestry-pipeline, perf.
+  ancestry-pipeline, perf. The `hld_` prefix is historical (from
+  the original behavior-spec test numbering); test function names
+  follow the same convention, which makes them easy to grep but
+  carries no significance otherwise. New tests can use any name.
 - `tests/integration/test_exit_codes.py` — **subprocess-based** exit
   code matrix. Click's `CliRunner` bypasses `cli.main()`'s exit-code
   translation, so use `subprocess.run([sys.executable, "-m", "aadr_resolve", …])`
@@ -783,7 +795,8 @@ Invoke `python -m tests.fixtures.synthesize` to regen all, or
 
 `tests/conftest.py` exposes three session-scoped fixtures:
 
-- `schemas` — pre-loaded registry (amortizes the ~5 ms load)
+- `schemas` — pre-loaded registry (amortizes the YAML-load cost
+  across the suite)
 - `fixtures_dir` — the `tests/fixtures/` Path
 - `tiny_anno_paths` — `SchemaClass → committed mini-fixture Path`
 
@@ -849,16 +862,19 @@ Sharp edges that have tripped up developers.
   orchestrator state and run-summary dataclasses. Leave the field
   alone; don't repurpose it without spec review.
 - **Cohort-coverage gate must pass `bridge` + `cohort_version`** to
-  canonicalize cohort IIDs. Day-10 regression: naive raw-IID lookup
-  under-counted because the cohort file used pre-rename MIDs.
+  canonicalize cohort IIDs. Without them, the gate falls back to
+  raw-IID equality and under-counts whenever a cohort file uses
+  pre-rename MIDs — e.g., a cohort entry `I0001` won't match the
+  canonical `Loschbour` row in the manifest, so the resolved count
+  drops below the real coverage and may trigger a spurious gate
+  failure.
 
 ## 8. Roadmap
 
 Deferred work — concurrency contract, low-confidence schema gate,
-`RunPolicy`/`RunContext` types, Rule C transitive bridge, N-version
-join, coverage CLI exposure, `--missing-sentinel` flag, `.snp` diff,
-and noted drift between spec and code — lives in
-[ROADMAP.md](ROADMAP.md).
+`RunPolicy` / `RunContext` types, Rule C transitive bridge,
+N-version join, coverage CLI exposure, `--missing-sentinel` flag,
+`.snp` diff — lives in [ROADMAP.md](ROADMAP.md).
 
 ---
 

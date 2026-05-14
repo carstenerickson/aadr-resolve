@@ -71,7 +71,8 @@ verbose enough to feel painful.
 ### Rule C transitive bridge
 
 `library_token` currently applies Trivial + Rule A + Rule B (see
-[DEVELOPMENT.md §1](DEVELOPMENT.md#library-token-chain-rules)). For
+[DEVELOPMENT.md → Library-token chain rules](DEVELOPMENT.md#library-token-chain-rules)).
+For
 a version gap where only v44.3 and v66.0 are supplied (skipping
 v62.0), neither rule fires for the `I0001 ↔ Loschbour.AG` chain:
 
@@ -127,20 +128,8 @@ unless requested.
 
 - Population-label normalization (the `group_id` classifier handles
   syntactic restructure; full ontology mapping is a different tool)
-- Free-text "Full Date" parsing (canonical date_calbp is already
-  bench-verified clean across all 6 versions)
+- Free-text "Full Date" parsing (canonical `date_calbp` already
+  parses cleanly across every tested release — 0 nulls observed)
 - HumanOrigins-specific comparison (different SNP panel; out of
   scope for the cross-version join utility)
 
-## Drift between spec and code
-
-Noteworthy but not bugs:
-
-- Test layout uses behavior-numbered integration files
-  (`tests/integration/test_hld_*`) rather than the per-module
-  unit-test files originally specified.
-- The `schema-sync-check` CI job and `scripts/sync_schemas.sh` from
-  the spec don't exist; schemas live only at
-  `src/aadr_resolve/schemas/`.
-- The publish workflow filename is
-  `.github/workflows/publish.yml`; the spec named it `release.yml`.
