@@ -14,6 +14,7 @@ from .commands.diff_cmd import diff_cmd
 from .commands.join_cmd import join_cmd
 from .commands.lookup_cmd import lookup_cmd
 from .commands.schema_cmd import schema_cmd
+from .commands.validate_groups_cmd import validate_groups_cmd
 from .errors import AadrResolveError
 from .schema import load_all_schemas
 from .types import ExitCode, SchemaClass
@@ -70,6 +71,7 @@ cli.add_command(diff_cmd, name="diff")
 cli.add_command(join_cmd, name="join")
 cli.add_command(lookup_cmd, name="lookup")
 cli.add_command(schema_cmd, name="schema")
+cli.add_command(validate_groups_cmd, name="validate-groups")
 
 
 def main() -> int:
