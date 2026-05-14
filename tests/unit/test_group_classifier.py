@@ -1,10 +1,10 @@
-"""HLD tests 14-19 + LLD-level unit tests for the six-class classifier."""
+"""HLD tests 14-20 + LLD-level unit tests for the seven-class classifier."""
 
 from __future__ import annotations
 
 import pytest
 
-from aadr_resolve.group_classifier import classify_all, classify_group_change
+from aadr_resolve.group_classifier import classify_all, classify_group_change, suggest_group_lift
 from aadr_resolve.types import GroupChangeClass
 
 # === HLD tests 14-19 (one per class) ===
@@ -70,8 +70,8 @@ def test_classify_same_input_unhandled() -> None:
     assert out[GroupChangeClass.CONVENTION_RESTRUCTURE_COUNTRY] == [("Czech_IA", "Czechia_IA")]
 
 
-def test_classify_all_returns_all_six_keys_empty_by_default() -> None:
-    """Empty input still returns the full six-key dict."""
+def test_classify_all_returns_all_seven_keys_empty_by_default() -> None:
+    """Empty input still returns the full seven-key dict."""
     out = classify_all([])
     assert set(out.keys()) == set(GroupChangeClass)
     assert all(v == [] for v in out.values())
@@ -99,3 +99,46 @@ def test_classifier_walks_in_fixed_order() -> None:
     not 'order' (even though the tokens differ in their suffix-stripped form)."""
     cls = classify_group_change("A_B.AG", "A_B")
     assert cls is GroupChangeClass.CONVENTION_RESTRUCTURE_SUFFIX
+
+
+# === Prefix-drop (issue #1: Patterson_England_IA → England_IA) ===
+
+
+def test_group_class_convention_restructure_prefix_drop() -> None:
+    """HLD test 20: Patterson_England_IA → England_IA is a known prefix drop,
+    not PARTIAL. Regression for issue #1."""
+    cls = classify_group_change("Patterson_England_IA", "England_IA")
+    assert cls is GroupChangeClass.CONVENTION_RESTRUCTURE_PREFIX_DROP
+
+
+def test_prefix_drop_with_suffix() -> None:
+    """Patterson_England_IA.AG → England_IA: suffix stripped first, then prefix
+    matched. Both transformations should combine into a single class."""
+    cls = classify_group_change("Patterson_England_IA.AG", "England_IA")
+    assert cls is GroupChangeClass.CONVENTION_RESTRUCTURE_PREFIX_DROP
+
+
+def test_prefix_drop_does_not_fire_on_bare_name() -> None:
+    """England_IA → England_IA_Ext is PARTIAL (superset), not prefix_drop."""
+    cls = classify_group_change("England_IA", "England_IA_Ext")
+    assert cls is GroupChangeClass.PARTIAL
+
+
+@pytest.mark.parametrize(
+    "group_id, expected",
+    [
+        ("Patterson_England_IA", "England_IA"),
+        ("Patterson_England_IA.AG", "England_IA"),
+        ("Patterson_Scotland_LBA", "Scotland_LBA"),
+        ("England_IA", None),
+        ("Czech_IA", None),
+    ],
+)
+def test_suggest_group_lift(group_id: str, expected: str | None) -> None:
+    assert suggest_group_lift(group_id) == expected
+
+
+def test_classify_all_includes_prefix_drop_key() -> None:
+    """classify_all returns all seven GroupChangeClass keys even with empty input."""
+    out = classify_all([])
+    assert GroupChangeClass.CONVENTION_RESTRUCTURE_PREFIX_DROP in out

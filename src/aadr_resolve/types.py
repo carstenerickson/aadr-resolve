@@ -35,13 +35,14 @@ class ExitCode(IntEnum):
 
 
 class GroupChangeClass(Enum):
-    """Six-class classifier for Group ID changes (HLD §Group ID change classifier).
+    """Seven-class classifier for Group ID changes (HLD §Group ID change classifier).
 
     Order matters: walked top-to-bottom by classify_group_change; first match
     wins."""
 
     CONVENTION_RESTRUCTURE_SUFFIX = "convention_restructure_suffix"
     CONVENTION_RESTRUCTURE_COUNTRY = "convention_restructure_country"
+    CONVENTION_RESTRUCTURE_PREFIX_DROP = "convention_restructure_prefix_drop"
     CONVENTION_RESTRUCTURE_ORDER = "convention_restructure_order"
     CONVENTION_RESTRUCTURE_PUNCT = "convention_restructure_punct"
     PARTIAL = "partial"
