@@ -63,9 +63,10 @@ IID join because one individual has multiple PGIDs.
 ### Schema classes A–E
 
 AADR's `.anno` column layout changed non-monotonically across
-releases. Five classes — derived from inspecting real `.anno`
-headers across releases v44.3, v50.0, v52.2, v54.1, v62.0, v66.0 —
-are pinned in `schemas/class_{A..E}.yaml` (shipped in the wheel):
+releases. Five classes — generated from real `.anno` headers by
+[`scripts/gen_schemas.py`](scripts/gen_schemas.py) across releases
+v44.3, v50.0, v52.2, v54.1, v62.0, v66.0 — are pinned in
+`src/aadr_resolve/schemas/class_{A..E}.yaml` (shipped in the wheel):
 
 | Class | Versions | ncols | Distinctive feature |
 |-------|----------|-------|---------------------|

@@ -1,6 +1,6 @@
 # AADR `.anno` schema class E
-# Generated from bench-verify pass 2026-05-11 (see scripts/ancestry/aadr-resolve/bench/).
-# To regenerate after a new AADR release, run: python gen_schemas.py
+# Generated from real AADR `.anno` headers by scripts/gen_schemas.py.
+# To regenerate (or add a new class): see scripts/README.md.
 
 class_id: E
 applies_to:
@@ -135,6 +135,6 @@ notes:
   - Header for col 1 (Genetic ID) contains a ~600-byte inline documentation paragraph; header normalization is REQUIRED.
   - Master ID RENAMED to Individual ID at col 3; new numeric Persistent Genetic ID column inserted at col 2.
   - PGID is per-Genetic-ID-row (not per-Individual); useful only as a future-stable per-row identifier.
-  - "Some cells contain TSV-quoted multi-line text with literal '\"\"' double-quotes; csv.QUOTE_NONE still parses them safely as bytes (no embedded-quote loss observed in v66)."
+  - "Some cells contain TSV-quoted multi-line text with literal '\"\"' double-quotes; csv.QUOTE_NONE still parses them safely as bytes."
   - "Column 33 and 34 BOTH normalize to 'sum_total_of_roh_segments_20cm'; v66 has a duplicate-name bug in the upstream .anno. Loader should detect and warn."
   - "Coverage column at col 24 ('Mean coverage on 1.15M autosomal targets for full bam') is the canonical 1240k-region coverage; mapped to 'coverage_1240k'. v66 also has col 25 ('Mean coverage on non-targeted autosomal SNPs') which is a different semantic — left unmapped at the canonical-field level."

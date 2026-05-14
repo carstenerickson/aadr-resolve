@@ -96,6 +96,27 @@ Open issues and PRs at
   their `exit_code` class attribute; never raise bare `Exception`
   from library code.
 
+## Adding support for a new AADR release
+
+The schema registry (`src/aadr_resolve/schemas/class_*.yaml`) is
+generated from real `.anno` headers, not hand-typed. When a new AADR
+release lands, regenerate via `scripts/gen_schemas.py` — see
+[scripts/README.md](scripts/README.md) for the Dataverse setup,
+filename mapping, and the two cases (same column layout as an
+existing class vs. needing a new class).
+
+In short:
+
+```bash
+# Populate aadr-bench/ with the .anno files (see scripts/README.md)
+python scripts/gen_schemas.py --in-place
+git diff src/aadr_resolve/schemas/
+```
+
+After review, add a regression test for the new release under
+`tests/integration/` and commit both the regenerated YAML(s) and
+the test together.
+
 ## Release process
 
 Maintainer-only. Releases are cut from `main` and published to PyPI

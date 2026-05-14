@@ -1,6 +1,6 @@
 # AADR `.anno` schema class C
-# Generated from bench-verify pass 2026-05-11 (see scripts/ancestry/aadr-resolve/bench/).
-# To regenerate after a new AADR release, run: python gen_schemas.py
+# Generated from real AADR `.anno` headers by scripts/gen_schemas.py.
+# To regenerate (or add a new class): see scripts/README.md.
 
 class_id: C
 applies_to:

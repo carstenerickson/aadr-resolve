@@ -1,6 +1,6 @@
 # AADR `.anno` schema class D
-# Generated from bench-verify pass 2026-05-11 (see scripts/ancestry/aadr-resolve/bench/).
-# To regenerate after a new AADR release, run: python gen_schemas.py
+# Generated from real AADR `.anno` headers by scripts/gen_schemas.py.
+# To regenerate (or add a new class): see scripts/README.md.
 
 class_id: D
 applies_to:
@@ -130,4 +130,4 @@ fields:
 notes:
   - Header for col 1 (Genetic ID) contains a ~250-byte inline documentation paragraph; header normalization (strip-at-first-bracket) is REQUIRED.
   - Class is similar to C but adds back some columns (doi, link, age_at_death, ROH, hapConX, etc.) without changing the col 1-2 positions.
-  - "NO COVERAGE COLUMN — v62 dropped both the bam-cov and the 1240k-cov columns. 'coverage_1240k' is unmapped here; AnnoFrame.coverage returns a Float64 Series of all-NaN. aadr-subset's `min_coverage:` filter on v62 input therefore selects nothing; users can fall back to `min_snps_hit_1240k:` (or invoke aadr-resolve with `--coverage-derive snps_hit_1240k` to compute a fraction-of-1240k-sites proxy)."
+  - "NO COVERAGE COLUMN — v62 dropped both bam-cov and 1240k-cov columns. 'coverage_1240k' is unmapped here; AnnoFrame.coverage returns all-NaN Series. Use coverage_via('snps_hit_1240k') for the derived proxy."

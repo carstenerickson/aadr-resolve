@@ -1,6 +1,6 @@
 # AADR `.anno` schema class A
-# Generated from bench-verify pass 2026-05-11 (see scripts/ancestry/aadr-resolve/bench/).
-# To regenerate after a new AADR release, run: python gen_schemas.py
+# Generated from real AADR `.anno` headers by scripts/gen_schemas.py.
+# To regenerate (or add a new class): see scripts/README.md.
 
 class_id: A
 applies_to:
@@ -127,8 +127,8 @@ notes:
   - "Both versions call the per-row identifier 'Version ID' (col 2), not 'Genetic ID'."
   - "v44.3 spells the group column 'GroupID' (no space); v50.0 spells it 'Group ID'. Match-normalization (lowercase + collapse non-word chars) maps both to 'group_id'."
   - "Both have an 'Index' column at position 1; dropped by class C."
-  - "In class A there is ONE 'SNPs hit on autosomal targets' column (col 21) without a 1240k vs HO discriminator — it gets mapped to 'snps_hit_1240k' here (v44/v50 were 1240k-only releases for this `.anno`). 'snps_hit_ho' remains unmapped."
+  - "Class A has ONE 'SNPs hit on autosomal targets' column (col 21) without a 1240k vs HO discriminator — mapped to 'snps_hit_1240k' (v44/v50 were 1240k-only). 'snps_hit_ho' remains unmapped."
   - "'Molecular Sex' field is just 'Sex' in v44/v50 (col 23)."
   - "Pulldown Strategy column not present in v44/v50 — this metadata was tracked at a coarser granularity (the 'Data source' column)."
-  - "Coverage column (col 20 'Coverage on autosomal targets') is BAM-coverage (whole-shotgun), not 1240k-specific. Mapped here to 'coverage_1240k' as the closest semantic proxy; documented as imperfect. Modern array-genotyped samples appear with empty value (Float64 NaN)."
-  - "Date column ('Date mean in BP') is at col 10 in v44.3 (extra 'Representative contact' col 8 before it) and col 9 in v50.0. Both are clean integer calBP with no nulls."
+  - "Coverage column (col 20 'Coverage on autosomal targets') is BAM-coverage (whole-shotgun), not 1240k-specific. Mapped here to 'coverage_1240k' as the closest semantic proxy; modern array-genotyped samples appear with empty value."
+  - "Date column ('Date mean in BP') is at col 10 in v44.3 (extra 'Representative contact' col 8 before it) and col 9 in v50.0. Both clean integer calBP, no nulls."
