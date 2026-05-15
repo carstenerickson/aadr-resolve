@@ -21,7 +21,17 @@ out-of-the-box via in-package YAML header signatures.
 pip install aadr-resolve
 ```
 
-Requires Python 3.11+. Dependencies: pandas 2.x, click 8.x, PyYAML 6.x.
+Requires **Python 3.11+** and **pip 23+** with **setuptools 61+**. If you are on a system Python (Ubuntu 22.04 ships pip 22 / setuptools 59), upgrade first:
+
+```bash
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install --upgrade pip   # brings pip to 23+, which upgrades setuptools automatically
+pip install aadr-resolve
+```
+
+Installing without upgrading pip on older toolchains causes the package to appear as `UNKNOWN 0.0.0`, which breaks co-installation with other packages (see [#3](https://github.com/carstenerickson/aadr-resolve/issues/3)).
+
+Dependencies: pandas 2.x, click 8.x, PyYAML 6.x.
 
 ## Quickstart
 
