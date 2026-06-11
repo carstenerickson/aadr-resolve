@@ -44,21 +44,24 @@ def _format_summary(af: AnnoFrame) -> str:
     lines.append(f"path:                {af.df.attrs.get('source_path', '(stdin)')}")
     lines.append(f"version (inferred):  {af.version}")
     lines.append(f"schema_class:        {af.schema_class.value}")
+    if af.layout_version is not None:
+        lines.append(f"column_layout:       {af.layout_version} (header-detected)")
     lines.append(f"n_rows:              {af.n_rows:,}")
     lines.append(f"n_columns:           {af.n_columns}")
     sig = af.schema_def.detection_signature
     lines.append(f"detection_signature: (ncols={af.n_columns}, col0={sig[0]!r}, col1={sig[1]!r})")
     lines.append("")
     lines.append("mapped canonical fields:")
-    # Resolve columns for THIS release: version_overrides can relocate a field
-    # (e.g. v50.0 dates), so render and sort by the actual column, not the base.
-    resolved = af.schema_def.resolved_columns(af.version)
+    # Resolve columns for THIS release's header-detected layout: version_overrides
+    # can relocate a field (e.g. v50.0 dates), so render and sort by the actual
+    # column, not the base.
+    resolved = af.schema_def.resolved_columns(af.layout_version)
     for canonical, mapping in sorted(
         af.schema_def.fields.items(), key=lambda kv: resolved[kv[0]][0]
     ):
         display = mapping.display_header or mapping.normalized_header
         col, base = resolved[canonical]
-        suffix = f"  [{af.version} override; base col {base}]" if base is not None else ""
+        suffix = f"  [{af.layout_version} layout; base col {base}]" if base is not None else ""
         lines.append(f"  col {col:2d}  {canonical:<32}  {display}{suffix}")
     if af.schema_def.not_present:
         lines.append("")

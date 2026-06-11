@@ -68,16 +68,26 @@ def read_anno(
             f"WARNING: could not infer version label from filename {path.name!r}; "
             f"using {inferred_label!r} (Path.stem). Use --version-label to override.\n"
         )
-        # This class has per-version column layouts selected by the version label
-        # (e.g. class A's v50.0 date shift). An unrecognized label silently falls
-        # back to the base layout, so columns may be read from the wrong positions.
-        if schema_def.version_overrides:
-            sys.stderr.write(
-                f"WARNING: class {schema_def.class_id.value} has per-version column "
-                f"overrides ({sorted(schema_def.version_overrides)}); with an uninferred "
-                f"version label, fields may be read from the base layout's columns. "
-                f"Pass --version-label to select the right release layout.\n"
-            )
+
+    # Select the column layout from the ACTUAL header content (not the filename
+    # label): for classes whose releases relocate fields under one detection
+    # signature, the right layout is observable in the headers. This makes column
+    # resolution robust to a wrong/uninferred version label.
+    normalized_headers = [normalize_header(h) for h in raw_headers]
+    layout_version = schema_def.select_layout_version(
+        normalized_headers, fallback_version=inferred_label
+    )
+    # If the headers picked a different layout than the version label would have,
+    # the file is likely mislabeled — say so, but trust the headers.
+    if schema_def.version_overrides and layout_version != schema_def.matched_override_key(
+        inferred_label
+    ):
+        sys.stderr.write(
+            f"WARNING: header content indicates the "
+            f"{layout_version or 'base'} column layout for class "
+            f"{schema_def.class_id.value}, which differs from what the version label "
+            f"{inferred_label!r} implies; using the header-detected layout.\n"
+        )
 
     warning = cross_check_against_schema(inferred_label, schema_def)
     if warning is not None:
@@ -116,6 +126,7 @@ def read_anno(
         schema_def=schema_def,
         df=df,
         path=path,
+        layout_version=layout_version,
     )
 
 

@@ -195,6 +195,57 @@ class SchemaClassDef:
             out[canonical] = (resolved, mapping.column if resolved != mapping.column else None)
         return out
 
+    def matched_override_key(self, version: str | None) -> str | None:
+        """The version_overrides key a version LABEL selects (longest match wins),
+        or None. Used to compare a filename-inferred layout against the one the
+        actual headers imply."""
+        if version is None:
+            return None
+        best: str | None = None
+        for key in self.version_overrides:
+            if self._version_matches(version, key) and (best is None or len(key) > len(best)):
+                best = key
+        return best
+
+    def _layout_match_score(self, version: str | None, normalized_headers: list[str]) -> int:
+        """How many mapped fields' `normalized_header` match the actual normalized
+        header at the field's column under the layout selected by `version`."""
+        score = 0
+        for canonical, mapping in self.fields.items():
+            col = self.column_for(canonical, version=version)
+            if 1 <= col <= len(normalized_headers) and normalized_headers[col - 1] == (
+                mapping.normalized_header
+            ):
+                score += 1
+        return score
+
+    def select_layout_version(
+        self, normalized_headers: list[str], *, fallback_version: str | None = None
+    ) -> str | None:
+        """Choose which `version_overrides` layout the file's actual headers match,
+        independent of any (possibly wrong or uninferred) filename version label.
+
+        For the base `fields` layout and each override layout, count how many
+        mapped fields' `normalized_header` line up with the actual header at that
+        field's column. Headers DECIDE when they favor one layout: an override that
+        out-matches the base is selected; a base that out-matches every override
+        wins outright. Only when headers are uninformative (a tie — e.g. a synthetic
+        file with placeholder headers) does it fall back to matching the version
+        label. Returns the winning override key, or None for the base layout."""
+        if not self.version_overrides:
+            return None
+        base_score = self._layout_match_score(None, normalized_headers)
+        scored = [
+            (self._layout_match_score(key, normalized_headers), len(key), key)
+            for key in self.version_overrides
+        ]
+        best_override_score, _, best_override_key = max(scored)
+        if best_override_score > base_score:
+            return best_override_key  # headers point to an override layout
+        if best_override_score < base_score:
+            return None  # headers point to the base layout
+        return self.matched_override_key(fallback_version)  # tie → trust the label
+
 
 # === Day-4: MID-rename bridge types ===
 

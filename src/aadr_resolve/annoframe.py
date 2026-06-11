@@ -32,6 +32,11 @@ class AnnoFrame:
     # (e.g., aadr-subset) can call resolve_master_ids without re-tracking
     # paths separately.
     path: Path | None = field(default=None, compare=False)
+    # The version_overrides layout key selected from the actual header content
+    # (None = base layout). Set by the loader; drives column resolution so that a
+    # release with a shifted layout is read correctly even when its filename
+    # version label is wrong or couldn't be inferred. See SchemaClassDef.
+    layout_version: str | None = field(default=None, compare=False)
     # Day-2 caches; declared here so the dataclass shape is stable.
     _date_calbp_cache: pd.Series | None = field(default=None, repr=False, compare=False)
     _coverage_cache: dict[str, pd.Series] = field(default_factory=dict, repr=False, compare=False)
@@ -157,9 +162,10 @@ class AnnoFrame:
     def _raw_column(self, canonical_field: str) -> pd.Series:
         """Raw string Series for a canonical field. Raises if absent in class.
 
-        Passes self.version so per-version column overrides (releases that share a
-        detection signature but relocate fields) resolve to the right column."""
-        col_idx = self.schema_def.column_for(canonical_field, version=self.version)
+        Resolves via self.layout_version — the layout the loader selected from the
+        actual headers — so a release with a shifted column layout reads correctly
+        regardless of its filename version label."""
+        col_idx = self.schema_def.column_for(canonical_field, version=self.layout_version)
         return self.df.iloc[:, col_idx - 1]
 
     # === Diagnostic ===
@@ -169,7 +175,7 @@ class AnnoFrame:
         mapped_fields: dict[str, dict[str, Any]] = {}
         # Report the column actually used for THIS release, not the base layout —
         # version_overrides can relocate a field (e.g. v50.0 dates).
-        resolved = self.schema_def.resolved_columns(self.version)
+        resolved = self.schema_def.resolved_columns(self.layout_version)
         for canonical, mapping in self.schema_def.fields.items():
             col, base = resolved[canonical]
             entry: dict[str, Any] = {

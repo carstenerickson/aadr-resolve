@@ -253,6 +253,57 @@ def test_duplicate_version_labels_rejected(tiny_anno_paths: dict[SchemaClass, Pa
     ensure_unique_versions([af_a, af_a2])
 
 
+# A v50.0 Human Origins layout (class F): 'Representative contact' dropped, so
+# every field from Date mean onward sits one column left of the v44.3 base.
+_V50_HO_HEADER = [
+    "Index", "Version ID", "Master ID", "Publication", "Date mean in BP", "Full Date",
+    "Group Label", "Locality", "Country", "Lat.", "Long.", "Data source",
+    "Coverage on autosomal targets", "SNPs hit on autosomal targets", "Sex", "Library type",
+    "ASSESSMENT", "ASSESSMENT REASONING",
+]  # fmt: skip
+
+
+def test_layout_detected_from_headers_not_label(tmp_path: Path) -> None:
+    """The column layout is chosen from header CONTENT, so a v50.0-layout HO file
+    reads correctly even when its version label is missing or wrong — the deeper
+    fix for trusting an inferred filename label."""
+    row = ["0", "S1.SG", "S1", "Pub", "4844", "x", "RightGroup", "Loc", "C", "0", "0",
+           "src", "1.2", "500000", "M", "ss", "PASS", "ok"]  # fmt: skip
+    p = tmp_path / "no_recognizable_version.anno"
+    p.write_text("\t".join(_V50_HO_HEADER) + "\n" + "\t".join(row) + "\n")
+
+    # Filename infers no version → stem fallback; headers must still pick v50.0.
+    af = AnnoFrame.from_path(p)
+    assert af.schema_class == SchemaClass.F
+    assert af.layout_version == "v50.0"  # selected from headers, not the label
+    assert af.group_id.iloc[0] == "RightGroup"  # override col 7, not base col 8
+    assert af.date_calbp.iloc[0] == 4844  # override col 5, not base col 6 ('x')
+
+    # An explicitly WRONG label does not override the header-detected layout.
+    af_wrong = AnnoFrame.from_path(p, version_label="v44.3")
+    assert af_wrong.layout_version == "v50.0"
+    assert af_wrong.group_id.iloc[0] == "RightGroup"
+
+
+def test_base_layout_kept_despite_wrong_label(tiny_anno_paths: dict[SchemaClass, Path]) -> None:
+    """The reverse: a base-layout (v44.3) HO file mislabeled v50.0 still reads the
+    base columns — header content wins over the label in both directions."""
+    af = AnnoFrame.from_path(tiny_anno_paths[SchemaClass.F], version_label="v50.0")
+    assert af.layout_version is None  # headers say base, not the v50.0 label
+    assert af.group_id.iloc[0] == "Synth_Test_Population"  # base col 8, not override col 7
+    assert af.date_calbp.iloc[0] == 1639  # base col 6
+
+
+def test_select_layout_version_ties_fall_back_to_label() -> None:
+    """When headers are uninformative (no field names line up — e.g. a synthetic
+    file with placeholder headers), selection falls back to the version label."""
+    a = load_schema(SchemaClass.A)
+    placeholder = ["index", "version_id"] + [f"col{i}" for i in range(3, 45)]
+    assert a.select_layout_version(placeholder, fallback_version="v50.0") == "v50.0"
+    assert a.select_layout_version(placeholder, fallback_version="v44.3") is None
+    assert a.select_layout_version(placeholder, fallback_version=None) is None
+
+
 def test_version_override_most_specific_key_wins() -> None:
     """When several override keys match a version label, the most specific
     (longest) key wins, independent of YAML/dict ordering."""

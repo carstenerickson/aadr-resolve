@@ -10,13 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Per-version column overrides** (`version_overrides:` in a schema YAML). Some
   AADR releases share a detection signature but place fields at different columns;
-  the loader now selects the right column per `version_label`, so one class can
-  serve releases with shifted layouts. Detection is unchanged (still by signature).
-  The `schema` diagnostic reports the per-release columns (flagging overridden
+  one class can now serve releases with shifted layouts. Detection is unchanged
+  (still by signature). The layout is selected from the file's **actual header
+  content** — not its filename version label — so a release with a shifted layout
+  reads correctly even when its label is wrong or can't be inferred; the loader
+  warns (and trusts the headers) when the two disagree. Only when headers are
+  uninformative does selection fall back to the label. The `schema` diagnostic
+  reports the header-detected layout and per-release columns (flagging overridden
   ones), and overrides are validated at load time (unknown field, out-of-range
-  column, or two fields colliding on one column fail fast rather than being
-  silently ignored). When a file's version label can't be inferred and its class
-  carries overrides, the loader warns that columns may be read from the base layout.
+  column, or two fields colliding on one column all fail fast).
 - **Guard against version-label collisions across panels.** Class F shares
   v44.3/v50.0 with class A, so the 1240K and HO panels of one release infer the
   same label. The cohort/lookup flows key per-version state by label, so combining
