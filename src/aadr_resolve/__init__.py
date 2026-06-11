@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from .types import MIDBridge
 
-__version__ = "0.3.0.dev0"
+try:
+    __version__ = _pkg_version("aadr-resolve")
+except PackageNotFoundError:  # pragma: no cover - running from a source tree w/o install
+    __version__ = "0.0.0+unknown"
 
 from .annoframe import AnnoFrame
 from .bridge import detect_bridge
