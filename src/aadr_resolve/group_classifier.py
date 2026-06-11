@@ -29,7 +29,9 @@ _COUNTRY_RENAMES: dict[str, str] = {
 _KNOWN_PREFIX_DROPS: frozenset[str] = frozenset({"Patterson"})
 
 
-def classify_group_change(group_old: str, group_new: str) -> GroupChangeClass:
+def classify_group_change(  # noqa: PLR0911 (7 classes, one return each — see docstring)
+    group_old: str, group_new: str
+) -> GroupChangeClass:
     """Classify a single (group_old, group_new) change event.
 
     Algorithm walks classes in priority order; first match wins:
@@ -96,7 +98,7 @@ def suggest_group_lift(group_id: str) -> str | None:
     for prefix in _KNOWN_PREFIX_DROPS:
         leader = prefix + "_"
         if stripped.startswith(leader):
-            return stripped[len(leader):]
+            return stripped[len(leader) :]
     return None
 
 
@@ -130,7 +132,7 @@ def _matches_prefix_drop(stripped_old: str, stripped_new: str) -> bool:
     known author/lab prefix.  E.g. Patterson_England_IA → England_IA."""
     for prefix in _KNOWN_PREFIX_DROPS:
         leader = prefix + "_"
-        if stripped_old.startswith(leader) and stripped_old[len(leader):] == stripped_new:
+        if stripped_old.startswith(leader) and stripped_old[len(leader) :] == stripped_new:
             return True
     return False
 
