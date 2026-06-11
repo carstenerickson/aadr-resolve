@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.1] — 2026-06-11
+
 ### Fixed
 - **Class C now loads the published v54.1 `.anno` files.** The released v54.1
   1240K and HO annotations carry a trailing tab, so the loader drops the phantom
@@ -14,8 +16,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   public files failed with `SchemaDetectionError`. The synthetic class-C fixture
   filled its trailing column and never exercised the drop, hiding the gap. Class C
   now accepts `n_columns: [35, 36]`; the trailing column is unmapped, so every
-  field stays at the same position. Added a regression test for the 35-column
-  trailing-tab shape.
+  field stays at the same position. The schema generator (`gen_schemas.py`) and
+  the `.anno` fixtures were brought in line so a regeneration reproduces the
+  `[35, 36]` shape, and a regression test covers the 35-column trailing-tab form.
+
+### Changed
+- Documented the pip 23+ / setuptools 61+ requirement for editable installs (#3).
+- The PyPI publish workflow now refuses to release unless the `ci.yml` run for
+  the released commit concluded successfully.
+
+## [0.3.0] — 2026-05-14
+
+### Added
+- **`validate-groups` sub-command** for upfront Group ID validation (#2).
+- **`Patterson_` prefix-drop lift table** in the Group ID change classifier (#1).
+- **`scripts/gen_schemas.py`** for regenerating the in-repo schema YAMLs from
+  real `.anno` headers.
 
 ## [0.2.0] — 2026-05-12
 
