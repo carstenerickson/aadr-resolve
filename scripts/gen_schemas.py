@@ -224,7 +224,9 @@ def class_notes(class_id: str) -> list[str]:
             "4 contamLD cols.",
             "'1240k coverage' (col 20) survives the drop; mapped to 'coverage_1240k'. The "
             "general bam-cov is gone.",
-            "Header has trailing tab producing phantom empty 37th column; loader must drop it.",
+            "Published v54.1 files (1240K and HO) carry a trailing tab, producing a phantom "
+            "empty final column that the loader drops; detection then sees 35 columns. A "
+            "36-column variant without the trailing tab also loads. Both widths are accepted.",
             "Sample I21276 has an embedded quote character (same as B); loader MUST use "
             "csv.QUOTE_NONE.",
         ]
@@ -258,17 +260,58 @@ def class_notes(class_id: str) -> list[str]:
     return []
 
 
+def _strip_trailing_phantom(headers: list[str]) -> list[str]:
+    """Drop a trailing-tab phantom (an empty final entry) if present, mirroring
+    the loader so field/signature detection operates on real columns only."""
+    if headers and normalize_match(headers[-1]) == "":
+        return headers[:-1]
+    return headers
+
+
+def _accepted_ncols(headers_by_ver: dict[str, list[str]]) -> tuple[list[int], bool]:
+    """Return (column-count set detect_class will observe, any-trailing-phantom).
+
+    The loader drops a trailing-tab phantom before detection, so a header that
+    carries one is observed at BOTH its stripped width (N-1) and its raw width
+    (N). Mirroring that tolerance is what reproduces the verified [35, 36] for
+    class C instead of collapsing it back to a single width."""
+    accum: set[int] = set()
+    trailing_phantom = False
+    for headers in headers_by_ver.values():
+        width = len(headers)
+        if headers and normalize_match(headers[-1]) == "":
+            trailing_phantom = True
+            accum.update({width - 1, width})
+        else:
+            accum.add(width)
+    return sorted(accum), trailing_phantom
+
+
+def _n_columns_lines(ncols_set: list[int], trailing_phantom: bool) -> list[str]:
+    """The `n_columns:` YAML line, prefixed with an explanatory comment when a
+    trailing-tab phantom widens the accepted set."""
+    lines: list[str] = []
+    if trailing_phantom:
+        lines += [
+            "# A header in this class carries a trailing tab; the loader drops the phantom",
+            "# empty column, so detection sees the stripped width. Accept both the stripped",
+            "# and raw widths; the trailing column is unmapped either way, so every field",
+            "# below stays at the same position.",
+        ]
+    lines.append(f"n_columns: {ncols_set if len(ncols_set) > 1 else ncols_set[0]}")
+    return lines
+
+
 def emit_yaml(class_id: str, versions: list[tuple[str, Path]]) -> str:
     """Emit the full YAML text for one schema class."""
     headers_by_ver = {ver: read_header(path) for ver, path in versions}
-    ncols_by_ver = {ver: len(h) for ver, h in headers_by_ver.items()}
+    ncols_set, trailing_phantom = _accepted_ncols(headers_by_ver)
 
     rep_ver, _rep_path = versions[0]
-    rep_headers = headers_by_ver[rep_ver]
+    rep_headers = _strip_trailing_phantom(headers_by_ver[rep_ver])
     rep_norm = [normalize_match(h) for h in rep_headers]
 
     # Detection signature: (ncols set, normalized col[0], normalized col[1])
-    ncols_set = sorted(set(ncols_by_ver.values()))
     sig_col0 = rep_norm[0] if rep_norm else ""
     sig_col1 = rep_norm[1] if len(rep_norm) > 1 else ""
 
@@ -282,7 +325,7 @@ def emit_yaml(class_id: str, versions: list[tuple[str, Path]]) -> str:
     ]
     for ver, _ in versions:
         lines.append(f"  - {yaml_escape(ver)}")
-    lines.append(f"n_columns: {ncols_set if len(ncols_set) > 1 else ncols_set[0]}")
+    lines += _n_columns_lines(ncols_set, trailing_phantom)
     lines.append("detection_signature:")
     lines.append(f"  col_0_normalized: {yaml_escape(sig_col0)}")
     lines.append(f"  col_1_normalized: {yaml_escape(sig_col1)}")
