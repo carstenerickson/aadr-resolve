@@ -4,13 +4,59 @@ on:
   release:
     types: [published]
 
-# Run only after CI is green on main.
 permissions:
   contents: read
 
 jobs:
+  # Hard gate: refuse to publish unless the CI workflow concluded `success`
+  # for the exact commit this release points at. Without this the publish
+  # job would run regardless of CI state (the old "run only after CI is
+  # green" comment was aspirational, not enforced).
+  verify-ci:
+    name: Require green CI on the released commit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Require CI success for ${{ github.sha }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "Requiring a green ci.yml run for $SHA"
+          deadline=$(( $(date +%s) + 1800 ))   # wait up to 30 min for in-flight CI
+          while :; do
+            info=$(gh api -X GET "repos/$REPO/actions/workflows/ci.yml/runs" \
+              -f head_sha="$SHA" \
+              --jq '.workflow_runs[0] // empty | "\(.status)\t\(.conclusion)\t\(.html_url)"' \
+              2>/dev/null || true)
+            if [ -z "$info" ]; then
+              echo "No ci.yml run found yet for $SHA ..."
+            else
+              IFS=$'\t' read -r status conclusion url <<< "$info"
+              echo "CI status=$status conclusion=$conclusion ($url)"
+              if [ "$status" = "completed" ]; then
+                if [ "$conclusion" = "success" ]; then
+                  echo "CI is green for $SHA. Proceeding to build + publish."
+                  exit 0
+                fi
+                echo "::error::CI for $SHA concluded '$conclusion' (not success). Refusing to publish."
+                exit 1
+              fi
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Timed out waiting for ci.yml to complete for $SHA. Refusing to publish."
+              exit 1
+            fi
+            sleep 20
+          done
+
   build:
     name: Build sdist + wheel
+    needs: verify-ci
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
