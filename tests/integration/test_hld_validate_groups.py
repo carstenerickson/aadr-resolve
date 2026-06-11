@@ -105,9 +105,7 @@ def test_validate_groups_unresolvable_raises(fixtures_dir: Path) -> None:
 def test_validate_groups_unresolvable_exits_nonzero(fixtures_dir: Path) -> None:
     """The CLI exits non-zero and mentions the unresolvable group ID in stderr."""
     anno_path = str(fixtures_dir / "tiny_class_E.anno")
-    proc = _run(
-        ["validate-groups", "--anno-files", anno_path, "Totally_Unknown_Group_XYZ"]
-    )
+    proc = _run(["validate-groups", "--anno-files", anno_path, "Totally_Unknown_Group_XYZ"])
     assert proc.returncode != 0
     assert "Totally_Unknown_Group_XYZ" in proc.stderr
 
@@ -159,9 +157,9 @@ def test_validate_groups_mixed_batch(fixtures_dir: Path) -> None:
     afs = _load_e(fixtures_dir)
     result = validate_groups(
         [
-            "Synth_Test_Population",           # valid
-            "Patterson_Synth_Other_Pop",        # lifted → Synth_Other_Pop
-            "Totally_Unknown_Group_XYZ",        # unresolvable
+            "Synth_Test_Population",  # valid
+            "Patterson_Synth_Other_Pop",  # lifted → Synth_Other_Pop
+            "Totally_Unknown_Group_XYZ",  # unresolvable
         ],
         afs,
     )

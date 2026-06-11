@@ -11,7 +11,8 @@ import click
 from ..annoframe import AnnoFrame
 from ..errors import ValidationError
 from ..types import SchemaClass
-from ..validate_groups import GroupValidationItem, validate_groups as _validate_groups
+from ..validate_groups import GroupValidationItem
+from ..validate_groups import validate_groups as _validate_groups
 
 
 @click.command()
