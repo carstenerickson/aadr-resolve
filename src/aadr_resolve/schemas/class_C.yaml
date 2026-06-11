@@ -5,7 +5,11 @@
 class_id: C
 applies_to:
   - v54.1
-n_columns: 36
+# A header in this class carries a trailing tab; the loader drops the phantom
+# empty column, so detection sees the stripped width. Accept both the stripped
+# and raw widths; the trailing column is unmapped either way, so every field
+# below stays at the same position.
+n_columns: [35, 36]
 detection_signature:
   col_0_normalized: genetic_id
   col_1_normalized: master_id
@@ -134,5 +138,5 @@ notes:
   - Index column DROPPED from B (column positions shift by -1).
   - "12 columns dropped from B: index, country (renamed to political_entity), the BAM-coverage column ('Coverage on autosomal targets'), 4 X-contam ANGSD cols, 4 contamLD cols."
   - "'1240k coverage' (col 20) survives the drop; mapped to 'coverage_1240k'. The general bam-cov is gone."
-  - Header has trailing tab producing phantom empty 37th column; loader must drop it.
+  - Published v54.1 files (1240K and HO) carry a trailing tab, producing a phantom empty final column that the loader drops; detection then sees 35 columns. A 36-column variant without the trailing tab also loads. Both widths are accepted.
   - Sample I21276 has an embedded quote character (same as B); loader MUST use csv.QUOTE_NONE.

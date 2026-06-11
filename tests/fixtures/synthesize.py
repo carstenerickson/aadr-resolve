@@ -50,12 +50,18 @@ def write_anno(spec: SynthSpec, path: Path, *, schema_def: SchemaClassDef | None
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _build_header(schema_def: SchemaClassDef) -> list[str]:
+def _build_header(schema_def: SchemaClassDef, *, ncols: int | None = None) -> list[str]:
     """Construct a raw header list whose entries normalize to the YAML's
     `detection_signature` (for cols 0+1) and `normalized_header` (for each
     canonical field). Unmapped positions get `_unmapped_col_<N>` placeholders.
+
+    Width defaults to the widest declared shape (`max(n_columns_set)`) — the
+    canonical full export — rather than the YAML's list order, so a multi-width
+    class reflows deterministically. Pass `ncols` to force a specific width
+    (e.g. the trailing-tab fixture uses the narrowest, stripped shape).
     """
-    ncols = schema_def.n_columns_set[0]
+    if ncols is None:
+        ncols = max(schema_def.n_columns_set)
     header: list[str | None] = [None] * ncols
 
     # Place canonical fields at their declared column positions.
@@ -195,15 +201,19 @@ def make_i21276_quote_fixture(out_path: Path, *, schema_def: SchemaClassDef | No
 def make_v54_trailing_tab_fixture(
     out_path: Path, *, schema_def: SchemaClassDef | None = None
 ) -> None:
-    """Class C (v54.1) fixture with a trailing tab on the header line — the
+    """Class C (v54.1) fixture matching the published 1240K/HO `.anno`: the
+    35 mapped columns followed by a trailing tab. The tab yields a phantom
+    empty 36th entry that the loader drops, so detection sees 35 — the
     regression case for HLD test 8 (trailing-tab phantom-column drop)."""
     if schema_def is None:
         schema_def = load_schema(SchemaClass.C)
-    header = _build_header(schema_def)
+    # Build the stripped (narrowest) width so the only extra entry is the
+    # phantom produced by the trailing tab below — mirroring the real files.
+    header = _build_header(schema_def, ncols=min(schema_def.n_columns_set))
     rng = random.Random(54100)
     row = _synth_row(0, header, schema_def, rng)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    # Header line ends with a tab (producing a 37th phantom column in v54.1).
+    # Header line ends with a tab (the phantom empty column in published v54.1).
     out_path.write_text(
         "\t".join(header) + "\t\n" + "\t".join(row) + "\n",
         encoding="utf-8",

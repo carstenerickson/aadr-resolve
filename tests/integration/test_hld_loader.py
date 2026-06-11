@@ -60,7 +60,8 @@ def test_loader_csv_quote_none_recovers_i21276(fixtures_dir: Path) -> None:
 
 def test_loader_v54_trailing_tab(fixtures_dir: Path) -> None:
     """HLD test 8: class C with trailing-tab header → phantom column dropped;
-    final ncols matches schema-class declared count (36)."""
+    final ncols matches the published v54.1 shape (35 mapped cols + trailing tab,
+    phantom dropped → 35)."""
     af = AnnoFrame.from_path(fixtures_dir / "v54_trailing_tab.anno")
     assert af.schema_class == SchemaClass.C
-    assert af.n_columns == 36  # phantom dropped
+    assert af.n_columns == 35  # 35 mapped + trailing-tab phantom, phantom dropped

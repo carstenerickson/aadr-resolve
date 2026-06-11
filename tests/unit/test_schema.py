@@ -61,6 +61,30 @@ def test_schema_class_C(tiny_anno_paths: dict[SchemaClass, Path]) -> None:
     assert af.n_columns == 36
 
 
+def test_schema_class_C_35_col_trailing_tab(
+    tiny_anno_paths: dict[SchemaClass, Path], tmp_path: Path
+) -> None:
+    """Published v54.1 `.anno` files (both 1240K and HO) carry a trailing tab, so
+    the loader drops the phantom column and detection sees 35 — which must still
+    resolve to class C. The synthetic class-C fixture fills its trailing column, so
+    it never exercised this path and real public files failed to load with
+    SchemaDetectionError (class C accepted n_columns 36 only)."""
+    rows = tiny_anno_paths[SchemaClass.C].read_text().splitlines()
+    # Empty the (unmapped) trailing column → 35 mapped columns + a trailing tab,
+    # exactly the shape of the published v54.1 files.
+    public = "\n".join("\t".join([*r.split("\t")[:-1], ""]) for r in rows) + "\n"
+    p = tmp_path / "v54.1_public_trailing_tab.anno"
+    p.write_text(public)
+
+    af = AnnoFrame.from_path(p)
+    assert af.schema_class == SchemaClass.C
+    assert af.n_columns == 35  # trailing-tab phantom dropped
+    # Every mapped field still extracts from its class-C position.
+    assert af.genetic_id.notna().any()
+    assert af.group_id.notna().any()
+    assert af.date_calbp.notna().any()
+
+
 def test_schema_class_D(tiny_anno_paths: dict[SchemaClass, Path]) -> None:
     """HLD test 4: v62.0 → class D."""
     af = _assert_class_resolves(tiny_anno_paths[SchemaClass.D], SchemaClass.D)
