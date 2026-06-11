@@ -66,7 +66,32 @@ def load_all_schemas() -> dict[SchemaClass, SchemaClassDef]:
                     f"{seen[key].value} and {cls.value}. Schema YAMLs are malformed."
                 )
             seen[key] = cls
+
+    # version_overrides are hand-authored (gen_schemas.py does not emit them), so
+    # validate them at load time: a typo'd field name or out-of-range column would
+    # otherwise be silently ignored — reintroducing the wrong-column class of bug
+    # overrides exist to fix.
+    for defn in schemas.values():
+        validate_version_overrides(defn)
     return schemas
+
+
+def validate_version_overrides(defn: SchemaClassDef) -> None:
+    """Raise InvariantViolation if any `version_overrides` entry names a field
+    absent from the class or places it outside the valid column range."""
+    max_col = max(defn.n_columns_set)
+    for ver, cols in defn.version_overrides.items():
+        for fld, col in cols.items():
+            if fld not in defn.fields:
+                raise InvariantViolation(
+                    f"class {defn.class_id.value} version_overrides[{ver!r}] names field "
+                    f"{fld!r}, which is not in this class's `fields`. Schema YAML is malformed."
+                )
+            if not 1 <= col <= max_col:
+                raise InvariantViolation(
+                    f"class {defn.class_id.value} version_overrides[{ver!r}][{fld!r}] = {col} is "
+                    f"outside the valid column range 1..{max_col}. Schema YAML is malformed."
+                )
 
 
 def detect_class(

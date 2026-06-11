@@ -168,11 +168,17 @@ class AnnoFrame:
         """Serializable summary for the `schema` subcommand's JSON output."""
         mapped_fields: dict[str, dict[str, Any]] = {}
         for canonical, mapping in self.schema_def.fields.items():
-            mapped_fields[canonical] = {
-                "column": mapping.column,
+            # Report the column actually used for THIS release, not the base
+            # layout — version_overrides can relocate a field (e.g. v50.0 dates).
+            resolved = self.schema_def.column_for(canonical, version=self.version)
+            entry: dict[str, Any] = {
+                "column": resolved,
                 "normalized_header": mapping.normalized_header,
                 "display_header": mapping.display_header,
             }
+            if resolved != mapping.column:
+                entry["base_column"] = mapping.column
+            mapped_fields[canonical] = entry
         return {
             "version": self.version,
             "schema_class": self.schema_class.value,

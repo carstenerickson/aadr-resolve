@@ -14,15 +14,31 @@ from pathlib import Path
 import pytest
 
 from aadr_resolve.annoframe import AnnoFrame
-from aadr_resolve.errors import SchemaDetectionError
+from aadr_resolve.errors import InvariantViolation, SchemaDetectionError
 from aadr_resolve.schema import (
     detect_class,
     display_normalize,
     load_all_schemas,
     load_schema,
     normalize_header,
+    validate_version_overrides,
 )
 from aadr_resolve.types import SchemaClass, SchemaClassDef
+
+
+def _mini_class_def(version_overrides: dict[str, dict[str, int]]) -> SchemaClassDef:
+    """A minimal class-A-signature SchemaClassDef carrying the given overrides,
+    for exercising override resolution/validation without a real YAML."""
+    return SchemaClassDef.from_dict(
+        {
+            "class_id": "A",
+            "n_columns": 44,
+            "detection_signature": {"col_0_normalized": "index", "col_1_normalized": "version_id"},
+            "fields": {"date_mean_bp": {"column": 10, "normalized_header": "date_mean_in_bp"}},
+            "version_overrides": version_overrides,
+        }
+    )
+
 
 # === HLD tests 1-5 (one per class) ===
 
@@ -182,6 +198,50 @@ def test_version_override_applied_at_extraction(tmp_path: Path) -> None:
     assert af.schema_class == SchemaClass.F
     assert af.group_id.iloc[0] == "RightGroup"  # override col 7, not base col 8
     assert af.date_calbp.iloc[0] == 4844  # override col 5, not base col 6 ('x')
+
+
+def test_version_override_class_a_v50_dates(tmp_path: Path) -> None:
+    """Headline-bug guard, end-to-end: a v50.0 1240K file reads its date from
+    col 9 (override), NOT col 10 — which holds the SD and is what class A's base
+    v44.3 layout wrongly read (e.g. I0626_all resolved to date_calbp=173 instead
+    of 3850)."""
+    ncols = 44  # v50.0 1240K width
+    header = ["Index", "Version ID"] + [f"col{i}" for i in range(3, ncols + 1)]
+    row = [""] * ncols
+    row[0] = "0"  # Index
+    row[1] = "Sample1.SG"  # Version ID -> genetic_id (col 2)
+    row[8] = "3850"  # col 9: v50.0 date_mean_bp (override)
+    row[9] = "173"  # col 10: the date SD == class A's base date_mean_bp (the bug)
+    p = tmp_path / "v50.0_1240K_layout.anno"
+    p.write_text("\t".join(header) + "\n" + "\t".join(row) + "\n")
+
+    af = AnnoFrame.from_path(p, version_label="v50.0")
+    assert af.schema_class == SchemaClass.A
+    assert af.date_calbp.iloc[0] == 3850  # override col 9, not base col 10 (173)
+
+
+def test_version_override_most_specific_key_wins() -> None:
+    """When several override keys match a version label, the most specific
+    (longest) key wins, independent of YAML/dict ordering."""
+    for overrides in (
+        {"v50": {"date_mean_bp": 8}, "v50.0": {"date_mean_bp": 9}},
+        {"v50.0": {"date_mean_bp": 9}, "v50": {"date_mean_bp": 8}},  # reversed order
+    ):
+        defn = _mini_class_def(overrides)
+        assert defn.column_for("date_mean_bp", version="v50.0") == 9  # both match → most specific
+        assert defn.column_for("date_mean_bp", version="v50.3") == 8  # only 'v50' matches
+        assert defn.column_for("date_mean_bp", version="v51.0") == 10  # neither → base
+
+
+def test_validate_version_overrides_rejects_bad_entries() -> None:
+    """Load-time validation catches hand-authoring mistakes that would otherwise
+    be silently ignored at lookup time."""
+    with pytest.raises(InvariantViolation, match="not in this class"):
+        validate_version_overrides(_mini_class_def({"v50.0": {"no_such_field": 9}}))
+    with pytest.raises(InvariantViolation, match="outside the valid column range"):
+        validate_version_overrides(_mini_class_def({"v50.0": {"date_mean_bp": 99}}))
+    # A valid override passes (no raise).
+    validate_version_overrides(_mini_class_def({"v50.0": {"date_mean_bp": 9}}))
 
 
 # === LLD-level unit tests ===

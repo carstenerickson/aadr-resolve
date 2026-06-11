@@ -50,9 +50,19 @@ def _format_summary(af: AnnoFrame) -> str:
     lines.append(f"detection_signature: (ncols={af.n_columns}, col0={sig[0]!r}, col1={sig[1]!r})")
     lines.append("")
     lines.append("mapped canonical fields:")
-    for canonical, mapping in sorted(af.schema_def.fields.items(), key=lambda kv: kv[1].column):
+    # Resolve columns for THIS release: version_overrides can relocate a field
+    # (e.g. v50.0 dates), so render and sort by the actual column, not the base.
+    resolved = {
+        canonical: af.schema_def.column_for(canonical, version=af.version)
+        for canonical in af.schema_def.fields
+    }
+    for canonical, mapping in sorted(af.schema_def.fields.items(), key=lambda kv: resolved[kv[0]]):
         display = mapping.display_header or mapping.normalized_header
-        lines.append(f"  col {mapping.column:2d}  {canonical:<32}  {display}")
+        col = resolved[canonical]
+        suffix = (
+            f"  [{af.version} override; base col {mapping.column}]" if col != mapping.column else ""
+        )
+        lines.append(f"  col {col:2d}  {canonical:<32}  {display}{suffix}")
     if af.schema_def.not_present:
         lines.append("")
         lines.append("fields NOT present in this class:")

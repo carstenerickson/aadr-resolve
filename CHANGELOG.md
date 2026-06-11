@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   AADR releases share a detection signature but place fields at different columns;
   the loader now selects the right column per `version_label`, so one class can
   serve releases with shifted layouts. Detection is unchanged (still by signature).
+  The `schema` diagnostic reports the per-release columns (flagging overridden
+  ones), and overrides are validated at load time (unknown field or out-of-range
+  column fails fast rather than being silently ignored).
 - **Class F: the early Human Origins schema** (v44.3, v50.0 HO). An 18-column
   minimal layout with HO-specific headers ("Group Label", "Sex"). v44.3 has a
   "Representative contact" column that shifts later fields; both releases extract

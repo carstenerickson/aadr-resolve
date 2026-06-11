@@ -141,6 +141,30 @@ class SchemaClassDef:
     def has_field(self, canonical: str) -> bool:
         return canonical in self.fields
 
+    @staticmethod
+    def _version_matches(version: str, key: str) -> bool:
+        """A version_overrides key matches a release label by exact match or on a
+        `.`/`_` boundary (so `v50.0` matches `v50.0`, `v50.0.p1`, `v50.0_HO` but
+        not `v50.01`)."""
+        return version == key or version.startswith(f"{key}.") or version.startswith(f"{key}_")
+
+    def override_column(self, canonical: str, version: str | None) -> int | None:
+        """The version_overrides column for `canonical` at `version`, or None if
+        no override applies. When several keys match (e.g. `v50.0` and a broader
+        `v50`), the most specific — longest — key wins, so the result is
+        independent of YAML/dict ordering."""
+        if version is None:
+            return None
+        best_key: str | None = None
+        for key, cols in self.version_overrides.items():
+            if (
+                canonical in cols
+                and self._version_matches(version, key)
+                and (best_key is None or len(key) > len(best_key))
+            ):
+                best_key = key
+        return self.version_overrides[best_key][canonical] if best_key is not None else None
+
     def column_for(self, canonical: str, version: str | None = None) -> int:
         """Return the 1-indexed column position for a canonical field.
 
@@ -155,13 +179,8 @@ class SchemaClassDef:
                 f"field {canonical!r} not present in schema class "
                 f"{self.class_id.value} (applies to {list(self.applies_to)})"
             )
-        if version is not None:
-            for key, cols in self.version_overrides.items():
-                if canonical in cols and (
-                    version == key or version.startswith(f"{key}.") or version.startswith(f"{key}_")
-                ):
-                    return cols[canonical]
-        return self.fields[canonical].column
+        override = self.override_column(canonical, version)
+        return override if override is not None else self.fields[canonical].column
 
 
 # === Day-4: MID-rename bridge types ===
