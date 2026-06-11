@@ -5,7 +5,11 @@
 class_id: C
 applies_to:
   - v54.1
-n_columns: 36
+# The published v54.1 `.anno` (1240K and HO) carries a trailing tab, so the loader
+# drops the phantom column and detection sees 35; an export without the trailing
+# tab keeps all 36. Accept both — the trailing column is unmapped either way, so
+# every field below stays at the same position. See notes.
+n_columns: [35, 36]
 detection_signature:
   col_0_normalized: genetic_id
   col_1_normalized: master_id

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Class C now loads the published v54.1 `.anno` files.** The released v54.1
+  1240K and HO annotations carry a trailing tab, so the loader drops the phantom
+  column and detection sees 35 columns — but class C accepted only 36, so real
+  public files failed with `SchemaDetectionError`. The synthetic class-C fixture
+  filled its trailing column and never exercised the drop, hiding the gap. Class C
+  now accepts `n_columns: [35, 36]`; the trailing column is unmapped, so every
+  field stays at the same position. Added a regression test for the 35-column
+  trailing-tab shape.
+
 ## [0.2.0] — 2026-05-12
 
 Reporting layer + polish. Closes the biggest doc/code gap in v0.1 by
