@@ -80,7 +80,7 @@ class AnnoFrame:
 
     @property
     def persistent_genetic_id(self) -> pd.Series | None:
-        """v66+ only (class E). Returns None for classes A-D.
+        """v66+ only (class E). Returns None for every class but E.
 
         Int64 nullable Series of the numeric Persistent Genetic ID column."""
         if self.schema_class != SchemaClass.E:
@@ -155,8 +155,11 @@ class AnnoFrame:
     # === Internal helpers ===
 
     def _raw_column(self, canonical_field: str) -> pd.Series:
-        """Raw string Series for a canonical field. Raises if absent in class."""
-        col_idx = self.schema_def.column_for(canonical_field)
+        """Raw string Series for a canonical field. Raises if absent in class.
+
+        Passes self.version so per-version column overrides (releases that share a
+        detection signature but relocate fields) resolve to the right column."""
+        col_idx = self.schema_def.column_for(canonical_field, version=self.version)
         return self.df.iloc[:, col_idx - 1]
 
     # === Diagnostic ===

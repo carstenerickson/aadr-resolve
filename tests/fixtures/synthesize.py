@@ -426,7 +426,7 @@ def _cli() -> None:
         "--class",
         dest="cls",
         default="ALL",
-        choices=["ALL", "A", "B", "C", "D", "E"],
+        choices=["ALL", "A", "B", "C", "D", "E", "F"],
     )
     parser.add_argument("--n-samples", type=int, default=50)
     parser.add_argument("--seed", type=int, default=42)

@@ -60,7 +60,7 @@ shape — 951–2969 IIDs per version have multiple rows. Not an error.
 `persistent_genetic_id` is row-level. It is NOT a substitute for the
 IID join because one individual has multiple PGIDs.
 
-### Schema classes A–E
+### Schema classes A–F
 
 AADR's `.anno` column layout changed non-monotonically across
 releases. Five classes — generated from real `.anno` headers by
@@ -460,7 +460,7 @@ copies:
 - Identity columns as `string` dtype: `genetic_id`, `individual_id`,
   `group_id`
 - `persistent_genetic_id` as `Int64` nullable — **returns `None`**
-  (not a Series) for classes A–D; only class E carries the column
+  (not a Series) for every class but E; only class E carries the column
 - `coverage` returns an all-NaN `Float64` Series of length `n_rows`
   for class D (no native column); A/B/C/E have real data
 - `date_calbp` / `date_sd_bp` as `Int64`

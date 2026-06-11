@@ -1,0 +1,117 @@
+# AADR `.anno` schema class F
+# Derived from the real v44.3 / v50.0 Human Origins public `.anno` headers.
+# The HO panel's early releases are an 18-column minimal schema — far fewer
+# columns than the 1240K twin (class A), and with HO-specific header names
+# (Group Label, Sex, Coverage on autosomal targets).
+#
+# v44.3 HO and v50.0 HO share the detection signature (18, index, version_id) but
+# place fields differently: v44.3 has a 'Representative contact' column (5) that
+# shifts every field from Date mean onward one column right. `fields` is the
+# v44.3 layout; `version_overrides` carries the v50.0 positions. (gen_schemas.py
+# does not yet emit version_overrides — these were derived directly from the two
+# real headers; see scripts/README.md.)
+
+class_id: F
+applies_to:
+  - v44.3
+  - v50.0
+n_columns: 18
+detection_signature:
+  col_0_normalized: index
+  col_1_normalized: version_id
+version_overrides:
+  v50.0:
+    date_mean_bp: 5
+    full_date: 6
+    group_id: 7
+    locality: 8
+    country_or_political_entity: 9
+    latitude: 10
+    longitude: 11
+    data_source_or_type: 12
+    coverage_1240k: 13
+    snps_hit_1240k: 14
+    molecular_sex: 15
+    library_type: 16
+    assessment: 17
+fields:
+  genetic_id:
+    column: 2
+    normalized_header: version_id
+    display_header: Version ID
+  individual_id:
+    column: 3
+    normalized_header: master_id
+    display_header: Master ID
+  publication:
+    column: 4
+    normalized_header: publication
+    display_header: Publication
+  date_mean_bp:
+    column: 6
+    normalized_header: date_mean_in_bp
+    display_header: Date mean in BP
+  full_date:
+    column: 7
+    normalized_header: full_date
+    display_header: Full Date
+  group_id:
+    column: 8
+    normalized_header: group_label
+    display_header: Group Label
+  locality:
+    column: 9
+    normalized_header: locality
+    display_header: Locality
+  country_or_political_entity:
+    column: 10
+    normalized_header: country
+    display_header: Country
+  latitude:
+    column: 11
+    normalized_header: lat
+    display_header: Lat.
+  longitude:
+    column: 12
+    normalized_header: long
+    display_header: Long.
+  data_source_or_type:
+    column: 13
+    normalized_header: data_source
+    display_header: Data source
+  coverage_1240k:
+    column: 14
+    normalized_header: coverage_on_autosomal_targets
+    display_header: Coverage on autosomal targets
+  snps_hit_1240k:
+    column: 15
+    normalized_header: snps_hit_on_autosomal_targets
+    display_header: SNPs hit on autosomal targets
+  molecular_sex:
+    column: 16
+    normalized_header: sex
+    display_header: Sex
+  library_type:
+    column: 17
+    normalized_header: library_type
+    display_header: Library type
+  assessment:
+    column: 18
+    normalized_header: assessment
+    display_header: ASSESSMENT
+
+# Fields not present in this class (canonical names unmapped here):
+#   - persistent_genetic_id, pulldown_strategy, snps_hit_ho, coverage_ho,
+#     y_haplogroup, mtdna_haplogroup, mtdna_coverage, damage_rate, sex_ratio_yx,
+#     skeletal_code, skeletal_element, date_method, date_sd_bp, assessment_warnings
+
+notes:
+  - "Early Human Origins public schema (v44.3, v50.0): 18 columns, a minimal
+     subset of the 1240K class-A metadata. Group column is 'Group Label' (not
+     'GroupID')."
+  - "v44.3 has a 'Representative contact' column (5) absent in v50.0; it shifts
+     Date mean onward one column right. Handled by version_overrides, so both
+     releases extract correctly."
+  - "No separate Date SD column in this schema; date_sd_bp is unmapped."
+  - "'Coverage on autosomal targets' (the HO-panel coverage) is mapped to
+     coverage_1240k as the closest proxy, mirroring class A."

@@ -15,13 +15,14 @@ from typing import Any, Literal
 
 
 class SchemaClass(Enum):
-    """One of five bench-verified schema classes (HLD §`.anno` schema registry)."""
+    """Bench-verified schema classes (HLD §`.anno` schema registry)."""
 
-    A = "A"  # v44.3, v50.0; has Index col; "Version ID" at col 2
+    A = "A"  # v44.3, v50.0 (1240K); has Index col; "Version ID" at col 2
     B = "B"  # v52.2; has Index col; "Genetic ID" at col 2
     C = "C"  # v54.1; Index dropped; "Genetic ID" at col 1
     D = "D"  # v62.0; same as C with cols added back
     E = "E"  # v66.0; Master ID renamed to Individual ID; new Persistent Genetic ID col 2
+    F = "F"  # v44.3, v50.0 (Human Origins); minimal 18-col schema; "Group Label" at col 8
 
 
 class ExitCode(IntEnum):
@@ -73,6 +74,13 @@ class SchemaClassDef:
     fields: dict[str, FieldMapping]
     notes: tuple[str, ...]
     not_present: tuple[str, ...]
+    # Per-version column overrides: {version_key: {canonical_field: 1-based column}}.
+    # Some AADR releases share a detection signature but place fields differently
+    # (e.g. v44.3 has a 'Representative contact' column that shifts v50.0's dates).
+    # `fields` holds the base layout; a release whose label matches a key here uses
+    # the overridden columns. Detection still picks the class by signature — the
+    # version_label (which the loader has) selects the layout within it.
+    version_overrides: dict[str, dict[str, int]] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SchemaClassDef:
@@ -113,6 +121,12 @@ class SchemaClassDef:
         notes = tuple(data.get("notes", []))
         not_present = tuple(data.get("not_present", []))
 
+        overrides_raw = data.get("version_overrides", {}) or {}
+        version_overrides = {
+            str(ver): {str(f): int(c) for f, c in cols.items()}
+            for ver, cols in overrides_raw.items()
+        }
+
         return cls(
             class_id=class_id,
             applies_to=applies_to,
@@ -121,15 +135,18 @@ class SchemaClassDef:
             fields=fields,
             notes=notes,
             not_present=not_present,
+            version_overrides=version_overrides,
         )
 
     def has_field(self, canonical: str) -> bool:
         return canonical in self.fields
 
-    def column_for(self, canonical: str) -> int:
+    def column_for(self, canonical: str, version: str | None = None) -> int:
         """Return the 1-indexed column position for a canonical field.
 
-        Raises MissingNativeFieldError (deferred import) if absent.
+        If `version` matches a key in `version_overrides` and that release
+        relocates this field, the overridden column wins over the base `fields`
+        layout. Raises MissingNativeFieldError (deferred import) if absent.
         """
         if canonical not in self.fields:
             from .errors import MissingNativeFieldError
@@ -138,6 +155,12 @@ class SchemaClassDef:
                 f"field {canonical!r} not present in schema class "
                 f"{self.class_id.value} (applies to {list(self.applies_to)})"
             )
+        if version is not None:
+            for key, cols in self.version_overrides.items():
+                if canonical in cols and (
+                    version == key or version.startswith(f"{key}.") or version.startswith(f"{key}_")
+                ):
+                    return cols[canonical]
         return self.fields[canonical].column
 
 

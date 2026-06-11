@@ -108,6 +108,82 @@ def test_schema_class_E(tiny_anno_paths: dict[SchemaClass, Path]) -> None:
     assert len(af.persistent_genetic_id) == af.n_rows
 
 
+def test_schema_class_F(tiny_anno_paths: dict[SchemaClass, Path]) -> None:
+    """Early Human Origins (v44.3, v50.0) → class F: an 18-column minimal schema
+    with HO-specific header names ('Group Label')."""
+    af = _assert_class_resolves(tiny_anno_paths[SchemaClass.F], SchemaClass.F)
+    assert af.schema_def.detection_signature == ("index", "version_id")
+    assert af.n_columns == 18
+    assert af.schema_def.fields["group_id"].normalized_header == "group_label"
+
+
+def test_version_overrides_resolve_columns_per_version() -> None:
+    """A field that moves between releases sharing a class resolves to the right
+    column by version_label. Class A: v50.0 drops v44.3's 'Representative contact',
+    shifting the dates left one column. Class F (HO): the same shift."""
+    a = load_schema(SchemaClass.A)
+    assert a.column_for("date_mean_bp", version="v44.3") == 10  # base layout
+    assert a.column_for("date_mean_bp", version="v50.0") == 9  # override
+    assert a.column_for("date_mean_bp", version="v50.0.p1") == 9  # patch matches key
+    assert a.column_for("date_mean_bp", version=None) == 10  # unknown → base
+    f = load_schema(SchemaClass.F)
+    assert f.column_for("group_id", version="v44.3") == 8
+    assert f.column_for("group_id", version="v50.0") == 7
+
+
+def test_version_override_applied_at_extraction(tmp_path: Path) -> None:
+    """End-to-end: AnnoFrame passes version_label, so a v50.0-layout HO file reads
+    group_id from col 7 and the date from col 5 — NOT the base (v44.3) col 8 / col 6,
+    which would land on a different field."""
+    hdr = [
+        "Index",
+        "Version ID",
+        "Master ID",
+        "Publication",
+        "Date mean in BP",
+        "Full Date",
+        "Group Label",
+        "Locality",
+        "Country",
+        "Lat.",
+        "Long.",
+        "Data source",
+        "Coverage on autosomal targets",
+        "SNPs hit on autosomal targets",
+        "Sex",
+        "Library type",
+        "ASSESSMENT",
+        "ASSESSMENT REASONING",
+    ]
+    row = [
+        "0",
+        "S1.SG",
+        "S1",
+        "Pub",
+        "4844",
+        "x",
+        "RightGroup",
+        "WrongIfBase",
+        "Loc",
+        "0",
+        "0",
+        "src",
+        "1.2",
+        "500000",
+        "M",
+        "ss",
+        "PASS",
+        "ok",
+    ]
+    p = tmp_path / "v50.0_HO_layout.anno"
+    p.write_text("\t".join(hdr) + "\n" + "\t".join(row) + "\n")
+
+    af = AnnoFrame.from_path(p, version_label="v50.0")
+    assert af.schema_class == SchemaClass.F
+    assert af.group_id.iloc[0] == "RightGroup"  # override col 7, not base col 8
+    assert af.date_calbp.iloc[0] == 4844  # override col 5, not base col 6 ('x')
+
+
 # === LLD-level unit tests ===
 
 

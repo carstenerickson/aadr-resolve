@@ -185,7 +185,7 @@ def _safe_int64_column(af: AnnoFrame, canonical: str, mask: pd.Series) -> list[i
 def _safe_pgid_column(af: AnnoFrame, mask: pd.Series) -> list[int | None]:
     """Pull persistent_genetic_id (class E only); return Python ints or None.
 
-    Returns [None, None, ...] for classes A–D (no PGID column)."""
+    Returns [None, None, ...] for every class but E (no PGID column)."""
     if af.schema_class != SchemaClass.E:
         return [None] * int(mask.sum())
     pgid_series = af.persistent_genetic_id

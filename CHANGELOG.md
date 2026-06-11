@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Per-version column overrides** (`version_overrides:` in a schema YAML). Some
+  AADR releases share a detection signature but place fields at different columns;
+  the loader now selects the right column per `version_label`, so one class can
+  serve releases with shifted layouts. Detection is unchanged (still by signature).
+- **Class F: the early Human Origins schema** (v44.3, v50.0 HO). An 18-column
+  minimal layout with HO-specific headers ("Group Label", "Sex"). v44.3 has a
+  "Representative contact" column that shifts later fields; both releases extract
+  correctly via `version_overrides`.
+
+### Fixed
+- **v50.0 1240K dates were read from the wrong column.** v44.3 has a "Representative
+  contact" column that v50.0 lacks, so v50.0's Date mean / SD / Full Date sit one
+  column left — but class A used v44.3's positions for both, making v50.0 dates read
+  the SD column (e.g. `I0626_all` resolved to `date_calbp=173` instead of `3850`).
+  Fixed with a class-A `version_overrides` entry for v50.0; fields from GroupID
+  onward already realigned and are unaffected.
+
 ## [0.3.1] — 2026-06-11
 
 ### Fixed

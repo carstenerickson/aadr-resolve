@@ -12,7 +12,7 @@ periodic Master-ID renames (9-18 per consecutive version pair; ~62
 cumulative v44.3 → v66.0) automatically.
 
 Designed and bench-verified against AADR releases v44.3, v50.0, v52.2,
-v54.1, v62.0, and v66.0; five schema classes (A–E) are recognized
+v54.1, v62.0, and v66.0; six schema classes (A–F) are recognized
 out-of-the-box via in-package YAML header signatures.
 
 ## Install
@@ -217,7 +217,7 @@ don't have a pre-existing cohort list.
 aadr-resolve schema PATH [--json]
 ```
 
-Diagnostic: detects which schema class (A–E) the `.anno` belongs to,
+Diagnostic: detects which schema class (A–F) the `.anno` belongs to,
 reports the column layout. Useful for debugging "why does this `.anno`
 not load."
 

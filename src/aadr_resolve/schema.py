@@ -48,7 +48,7 @@ def load_schema(class_id: SchemaClass) -> SchemaClassDef:
 
 
 def load_all_schemas() -> dict[SchemaClass, SchemaClassDef]:
-    """Pre-load all 5 class YAMLs.
+    """Pre-load all class YAMLs.
 
     Validated: signature uniqueness across the registry. Two classes with the
     same `(n_columns, col_0_normalized, col_1_normalized)` would silently
