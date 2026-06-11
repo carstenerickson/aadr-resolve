@@ -68,6 +68,16 @@ def read_anno(
             f"WARNING: could not infer version label from filename {path.name!r}; "
             f"using {inferred_label!r} (Path.stem). Use --version-label to override.\n"
         )
+        # This class has per-version column layouts selected by the version label
+        # (e.g. class A's v50.0 date shift). An unrecognized label silently falls
+        # back to the base layout, so columns may be read from the wrong positions.
+        if schema_def.version_overrides:
+            sys.stderr.write(
+                f"WARNING: class {schema_def.class_id.value} has per-version column "
+                f"overrides ({sorted(schema_def.version_overrides)}); with an uninferred "
+                f"version label, fields may be read from the base layout's columns. "
+                f"Pass --version-label to select the right release layout.\n"
+            )
 
     warning = cross_check_against_schema(inferred_label, schema_def)
     if warning is not None:

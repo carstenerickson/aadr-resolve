@@ -182,6 +182,19 @@ class SchemaClassDef:
         override = self.override_column(canonical, version)
         return override if override is not None else self.fields[canonical].column
 
+    def resolved_columns(self, version: str | None = None) -> dict[str, tuple[int, int | None]]:
+        """Map each canonical field to `(resolved_column, base_column_if_overridden)`
+        for `version`. The second element is None when the field uses its base
+        `fields` column; otherwise it is the base column the override replaced.
+
+        Shared by the `schema` diagnostic's text and JSON renderers so they can't
+        disagree about which column a field maps to for a release."""
+        out: dict[str, tuple[int, int | None]] = {}
+        for canonical, mapping in self.fields.items():
+            resolved = self.column_for(canonical, version=version)
+            out[canonical] = (resolved, mapping.column if resolved != mapping.column else None)
+        return out
+
 
 # === Day-4: MID-rename bridge types ===
 

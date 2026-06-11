@@ -35,7 +35,11 @@ def detect_bridge(
          propagating each chain to the canonical (latest) MID.
 
     Returns a populated MIDBridge. Raises CollisionDetected when
-    on_collision='error' and a cross-lab collision is found."""
+    on_collision='error' and a cross-lab collision is found.
+
+    Note: this does NOT reject frames sharing a version label — `diff`/`join`
+    legitimately compare two same-version frames positionally. The N-frame
+    version-keyed flows (cohort, lookup) call `ensure_unique_versions` instead."""
     if not anno_frames:
         return MIDBridge()
 

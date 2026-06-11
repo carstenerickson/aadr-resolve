@@ -13,8 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the loader now selects the right column per `version_label`, so one class can
   serve releases with shifted layouts. Detection is unchanged (still by signature).
   The `schema` diagnostic reports the per-release columns (flagging overridden
-  ones), and overrides are validated at load time (unknown field or out-of-range
-  column fails fast rather than being silently ignored).
+  ones), and overrides are validated at load time (unknown field, out-of-range
+  column, or two fields colliding on one column fail fast rather than being
+  silently ignored). When a file's version label can't be inferred and its class
+  carries overrides, the loader warns that columns may be read from the base layout.
+- **Guard against version-label collisions across panels.** Class F shares
+  v44.3/v50.0 with class A, so the 1240K and HO panels of one release infer the
+  same label. The cohort/lookup flows key per-version state by label, so combining
+  two different-class panels under one label now fails with a clear error instead
+  of silently dropping one panel's data.
 - **Class F: the early Human Origins schema** (v44.3, v50.0 HO). An 18-column
   minimal layout with HO-specific headers ("Group Label", "Sex"). v44.3 has a
   "Representative contact" column that shifts later fields; both releases extract

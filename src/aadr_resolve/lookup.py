@@ -11,7 +11,7 @@ from typing import Literal
 
 import pandas as pd
 
-from .annoframe import AnnoFrame
+from .annoframe import AnnoFrame, ensure_unique_versions
 from .types import LookupResult, LookupRowRecord, MIDBridge, SchemaClass
 
 _MatchedVia = Literal["individual_id", "genetic_id", "not_found"]
@@ -43,6 +43,10 @@ def lookup_single(
       - 'individual_id_renamed' (≥1 bridge event traversed for this individual)."""
     if not anno_frames:
         return LookupResult(query=query, individual_id_canonical=query, matched_via="not_found")
+
+    # per_version below is keyed by version label; reject duplicates (e.g. v50.0
+    # 1240K + v50.0 HO) before one panel's rows silently overwrite the other's.
+    ensure_unique_versions(anno_frames)
 
     if bridge is None:
         bridge = MIDBridge()

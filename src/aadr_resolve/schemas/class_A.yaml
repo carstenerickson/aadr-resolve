@@ -11,12 +11,14 @@ detection_signature:
   col_0_normalized: index
   col_1_normalized: version_id
 # `fields` below is the v44.3 layout, which has a 'Representative contact' column
-# (8) before the dates. v50.0 drops it, shifting Date mean/SD and Full Date one
-# column left — without this override v50.0 dates read the SD column (e.g. I0626_all
-# resolves to 173 instead of 3850). v50.0's 'Age at Death Estimate' column re-pads
-# later, so every field from GroupID (13) onward realigns and needs no override.
+# (8) before the dates. v50.0 drops it, shifting Method for Determining Date, Date
+# mean/SD and Full Date one column left — without these overrides v50.0 dates read
+# the SD column (e.g. I0626_all resolves to 173 instead of 3850) and date_method
+# reads Date mean. v50.0's 'Age at Death Estimate' column re-pads later, so every
+# field from GroupID (13) onward realigns and needs no override.
 version_overrides:
   v50.0:
+    date_method: 8
     date_mean_bp: 9
     date_sd_bp: 10
     full_date: 11

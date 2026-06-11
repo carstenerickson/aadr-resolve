@@ -52,16 +52,13 @@ def _format_summary(af: AnnoFrame) -> str:
     lines.append("mapped canonical fields:")
     # Resolve columns for THIS release: version_overrides can relocate a field
     # (e.g. v50.0 dates), so render and sort by the actual column, not the base.
-    resolved = {
-        canonical: af.schema_def.column_for(canonical, version=af.version)
-        for canonical in af.schema_def.fields
-    }
-    for canonical, mapping in sorted(af.schema_def.fields.items(), key=lambda kv: resolved[kv[0]]):
+    resolved = af.schema_def.resolved_columns(af.version)
+    for canonical, mapping in sorted(
+        af.schema_def.fields.items(), key=lambda kv: resolved[kv[0]][0]
+    ):
         display = mapping.display_header or mapping.normalized_header
-        col = resolved[canonical]
-        suffix = (
-            f"  [{af.version} override; base col {mapping.column}]" if col != mapping.column else ""
-        )
+        col, base = resolved[canonical]
+        suffix = f"  [{af.version} override; base col {base}]" if base is not None else ""
         lines.append(f"  col {col:2d}  {canonical:<32}  {display}{suffix}")
     if af.schema_def.not_present:
         lines.append("")

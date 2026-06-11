@@ -167,17 +167,18 @@ class AnnoFrame:
     def to_dict(self) -> dict[str, Any]:
         """Serializable summary for the `schema` subcommand's JSON output."""
         mapped_fields: dict[str, dict[str, Any]] = {}
+        # Report the column actually used for THIS release, not the base layout —
+        # version_overrides can relocate a field (e.g. v50.0 dates).
+        resolved = self.schema_def.resolved_columns(self.version)
         for canonical, mapping in self.schema_def.fields.items():
-            # Report the column actually used for THIS release, not the base
-            # layout — version_overrides can relocate a field (e.g. v50.0 dates).
-            resolved = self.schema_def.column_for(canonical, version=self.version)
+            col, base = resolved[canonical]
             entry: dict[str, Any] = {
-                "column": resolved,
+                "column": col,
                 "normalized_header": mapping.normalized_header,
                 "display_header": mapping.display_header,
             }
-            if resolved != mapping.column:
-                entry["base_column"] = mapping.column
+            if base is not None:
+                entry["base_column"] = base
             mapped_fields[canonical] = entry
         return {
             "version": self.version,
@@ -196,3 +197,33 @@ class AnnoFrame:
             f"schema_class={self.schema_class.value!r}, "
             f"n_rows={self.n_rows}, n_columns={self.n_columns})"
         )
+
+
+def ensure_unique_versions(anno_frames: list[AnnoFrame]) -> None:
+    """Reject two frames that share a version label but belong to DIFFERENT schema
+    classes.
+
+    The N-frame cross-version flows (cohort manifest, lookup) key per-version state
+    by `version_label`. Before class F, each version label mapped to exactly one
+    class, so a label uniquely identified a layout. Class F (early Human Origins)
+    newly shares v44.3/v50.0 with class A (1240K), so the v50.0 1240K and v50.0 HO
+    panels both infer `v50.0` while carrying *different* data — keying both by
+    `v50.0` would silently overwrite one panel (last-writer-wins). Reject that.
+
+    (Two same-version, same-class frames remain allowed: that is a pre-existing
+    degenerate case the join/turnover flows rely on, and `diff`/`join` compare two
+    frames positionally rather than by a version-keyed dict.)"""
+    from .errors import UsageError
+
+    seen: dict[str, AnnoFrame] = {}
+    for af in anno_frames:
+        prev = seen.get(af.version)
+        if prev is not None and prev.schema_class != af.schema_class:
+            raise UsageError(
+                f"two .anno files share version label {af.version!r} but are different "
+                f"schema classes ({prev.schema_class.value} and {af.schema_class.value}) — "
+                f"e.g. the 1240K and Human Origins panels of one release. These flows key "
+                f"per-version state by label, so they can't be combined in a single run. "
+                f"Supply one .anno per version, or pass distinct --version-label values."
+            )
+        seen.setdefault(af.version, af)
