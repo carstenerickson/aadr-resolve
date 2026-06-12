@@ -26,13 +26,17 @@ from .types import ExitCode, SchemaClass
     "--schema-override",
     type=click.Choice([c.value for c in SchemaClass]),
     default=None,
-    help="Force schema class (A|B|C|D|E) instead of auto-detecting from header.",
+    help="Force schema class (A|B|C|D|E|F) instead of auto-detecting from header.",
 )
 @click.option(
     "--version-label",
     type=str,
     default=None,
-    help="Override the inferred version label (e.g., 'v67.0' for a new release).",
+    help=(
+        "Override the inferred version label (e.g. 'v67.0' for a new release). Sets the "
+        "version-keying label only; the column layout is detected from header content, so "
+        "this does NOT force a layout when the headers indicate a different one."
+    ),
 )
 @click.option(
     "--mid-bridge",

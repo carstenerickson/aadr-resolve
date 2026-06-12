@@ -321,9 +321,12 @@ match any of the 5 known classes. Either the file is from a newer AADR
 release (file an issue with the bench-verify diff), or the file has
 been edited. Workarounds:
 
-- `--schema-override A|B|C|D|E` forces a class without signature check.
+- `--schema-override A|B|C|D|E|F` forces a class without signature check.
 - `--version-label vN.N` forces a version label when the filename
-  doesn't match a known pattern.
+  doesn't match a known pattern. It sets the version-keying label only —
+  the column layout (for releases that share a class but shift columns,
+  e.g. v50.0) is detected from the header content, so `--version-label`
+  does **not** force a layout when the headers indicate a different one.
 
 **"cross-lab MID collision"** — the GID-stability check found a Master
 ID that maps to two different individuals in different versions.
