@@ -58,7 +58,7 @@ curl -sSf "https://dataverse.harvard.edu/api/datasets/:persistentId/versions/:la
 ### 2. Run the generator
 
 ```bash
-# Regenerate all five classes into ./aadr-bench/schemas/ (review before applying)
+# Regenerate all classes into ./aadr-bench/schemas/ (review before applying)
 python scripts/gen_schemas.py
 
 # Or write directly into the in-package registry (then `git diff` to review)
@@ -127,7 +127,7 @@ catches the latter.
 
 ## Why this exists
 
-The five schema classes (A–E) were derived empirically from real AADR
+The schema classes (A–F) were derived empirically from real AADR
 `.anno` headers. They are not hand-typed: every column position, every
 detection signature, every "field not present" note came from running
 this script against the six reference releases. Keeping the script

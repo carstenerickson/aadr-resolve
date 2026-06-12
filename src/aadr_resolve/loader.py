@@ -69,6 +69,26 @@ def read_anno(
             f"using {inferred_label!r} (Path.stem). Use --version-label to override.\n"
         )
 
+    # Select the column layout from the ACTUAL header content (not the filename
+    # label): for classes whose releases relocate fields under one detection
+    # signature, the right layout is observable in the headers. This makes column
+    # resolution robust to a wrong/uninferred version label.
+    normalized_headers = [normalize_header(h) for h in raw_headers]
+    layout_version = schema_def.select_layout_version(
+        normalized_headers, fallback_version=inferred_label
+    )
+    # If the headers picked a different layout than the version label would have,
+    # the file is likely mislabeled — say so, but trust the headers.
+    if schema_def.version_overrides and layout_version != schema_def.matched_override_key(
+        inferred_label
+    ):
+        sys.stderr.write(
+            f"WARNING: header content indicates the "
+            f"{layout_version or 'base'} column layout for class "
+            f"{schema_def.class_id.value}, which differs from what the version label "
+            f"{inferred_label!r} implies; using the header-detected layout.\n"
+        )
+
     warning = cross_check_against_schema(inferred_label, schema_def)
     if warning is not None:
         sys.stderr.write(f"WARNING: {warning}\n")
@@ -106,6 +126,7 @@ def read_anno(
         schema_def=schema_def,
         df=df,
         path=path,
+        layout_version=layout_version,
     )
 
 

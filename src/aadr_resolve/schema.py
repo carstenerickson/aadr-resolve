@@ -42,13 +42,17 @@ def load_schema(class_id: SchemaClass) -> SchemaClassDef:
             f"failed to load schema YAML for class {class_id.value}: {e}"
         ) from e
     try:
-        return SchemaClassDef.from_dict(data)
+        defn = SchemaClassDef.from_dict(data)
     except ValueError as e:
         raise InvariantViolation(f"malformed schema YAML for class {class_id.value}: {e}") from e
+    # Validate here (not only in load_all_schemas) so every load path — including
+    # direct load_schema() callers like tests/fixtures/synthesize.py — is guarded.
+    validate_version_overrides(defn)
+    return defn
 
 
 def load_all_schemas() -> dict[SchemaClass, SchemaClassDef]:
-    """Pre-load all 5 class YAMLs.
+    """Pre-load all class YAMLs.
 
     Validated: signature uniqueness across the registry. Two classes with the
     same `(n_columns, col_0_normalized, col_1_normalized)` would silently
@@ -66,7 +70,46 @@ def load_all_schemas() -> dict[SchemaClass, SchemaClassDef]:
                     f"{seen[key].value} and {cls.value}. Schema YAMLs are malformed."
                 )
             seen[key] = cls
+    # Per-class version_overrides are validated in load_schema (every load path).
     return schemas
+
+
+def validate_version_overrides(defn: SchemaClassDef) -> None:
+    """Raise InvariantViolation if any `version_overrides` entry names a field
+    absent from the class, places it outside the valid column range, or collides
+    with another field's resolved column in the same version.
+
+    The collision check considers the *resolved* layout for a version (overrides
+    applied on top of the base `fields`): an override that lands on a non-overridden
+    field's base column silently makes both read the same column. This is the exact
+    class of bug overrides exist to fix (v50.0 date_method had no override and shared
+    col 9 with the date_mean_bp override)."""
+    max_col = max(defn.n_columns_set)
+    for ver, cols in defn.version_overrides.items():
+        for fld, col in cols.items():
+            if fld not in defn.fields:
+                raise InvariantViolation(
+                    f"class {defn.class_id.value} version_overrides[{ver!r}] names field "
+                    f"{fld!r}, which is not in this class's `fields`. Schema YAML is malformed."
+                )
+            if not 1 <= col <= max_col:
+                raise InvariantViolation(
+                    f"class {defn.class_id.value} version_overrides[{ver!r}][{fld!r}] = {col} is "
+                    f"outside the valid column range 1..{max_col}. Schema YAML is malformed."
+                )
+
+        # Collision check: resolve every field's column for this version and ensure
+        # no two distinct fields land on the same column.
+        by_col: dict[int, str] = {}
+        for fld in defn.fields:
+            resolved = defn.column_for(fld, version=ver)
+            if resolved in by_col:
+                raise InvariantViolation(
+                    f"class {defn.class_id.value} version_overrides[{ver!r}]: fields "
+                    f"{by_col[resolved]!r} and {fld!r} both resolve to column {resolved}. "
+                    f"Schema YAML is malformed."
+                )
+            by_col[resolved] = fld
 
 
 def detect_class(

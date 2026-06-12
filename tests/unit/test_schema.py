@@ -13,16 +13,32 @@ from pathlib import Path
 
 import pytest
 
-from aadr_resolve.annoframe import AnnoFrame
-from aadr_resolve.errors import SchemaDetectionError
+from aadr_resolve.annoframe import AnnoFrame, ensure_unique_versions
+from aadr_resolve.errors import InvariantViolation, SchemaDetectionError, UsageError
 from aadr_resolve.schema import (
     detect_class,
     display_normalize,
     load_all_schemas,
     load_schema,
     normalize_header,
+    validate_version_overrides,
 )
 from aadr_resolve.types import SchemaClass, SchemaClassDef
+
+
+def _mini_class_def(version_overrides: dict[str, dict[str, int]]) -> SchemaClassDef:
+    """A minimal class-A-signature SchemaClassDef carrying the given overrides,
+    for exercising override resolution/validation without a real YAML."""
+    return SchemaClassDef.from_dict(
+        {
+            "class_id": "A",
+            "n_columns": 44,
+            "detection_signature": {"col_0_normalized": "index", "col_1_normalized": "version_id"},
+            "fields": {"date_mean_bp": {"column": 10, "normalized_header": "date_mean_in_bp"}},
+            "version_overrides": version_overrides,
+        }
+    )
+
 
 # === HLD tests 1-5 (one per class) ===
 
@@ -106,6 +122,238 @@ def test_schema_class_E(tiny_anno_paths: dict[SchemaClass, Path]) -> None:
     # PGID accessor returns a Series (Day-1 raw-string scaffold; Int64 in Day 2).
     assert af.persistent_genetic_id is not None
     assert len(af.persistent_genetic_id) == af.n_rows
+
+
+def test_schema_class_F(tiny_anno_paths: dict[SchemaClass, Path]) -> None:
+    """Early Human Origins (v44.3, v50.0) → class F: an 18-column minimal schema
+    with HO-specific header names ('Group Label')."""
+    af = _assert_class_resolves(tiny_anno_paths[SchemaClass.F], SchemaClass.F)
+    assert af.schema_def.detection_signature == ("index", "version_id")
+    assert af.n_columns == 18
+    assert af.schema_def.fields["group_id"].normalized_header == "group_label"
+    # Positional extraction through AnnoFrame accessors (base v44.3 layout: the
+    # fixture infers no version label) — guards a base-column off-by-one in class F.
+    assert af.genetic_id.iloc[0] == "Synth0001.SG"  # col 2
+    assert af.group_id.iloc[0] == "Synth_Test_Population"  # col 8
+    assert af.date_calbp.iloc[0] == 1639  # col 6
+
+
+def test_version_overrides_resolve_columns_per_version() -> None:
+    """A field that moves between releases sharing a class resolves to the right
+    column by version_label. Class A: v50.0 drops v44.3's 'Representative contact',
+    shifting the dates left one column. Class F (HO): the same shift."""
+    a = load_schema(SchemaClass.A)
+    assert a.column_for("date_mean_bp", version="v44.3") == 10  # base layout
+    assert a.column_for("date_mean_bp", version="v50.0") == 9  # override
+    assert a.column_for("date_mean_bp", version="v50.0.p1") == 9  # patch matches key
+    assert a.column_for("date_mean_bp", version=None) == 10  # unknown → base
+    # date_method shifts with the dates (9 → 8); without its override it would
+    # collide on col 9 with date_mean_bp and read 'Date mean' instead of the method.
+    assert a.column_for("date_method", version="v44.3") == 9  # base layout
+    assert a.column_for("date_method", version="v50.0") == 8  # override
+    assert a.column_for("date_sd_bp", version="v50.0") == 10  # whole band moves
+    assert a.column_for("full_date", version="v50.0") == 11
+    # No two fields may resolve to the same column for v50.0 (collision guard).
+    v50_cols = [a.column_for(name, version="v50.0") for name in a.fields]
+    assert len(v50_cols) == len(set(v50_cols))
+    f = load_schema(SchemaClass.F)
+    assert f.column_for("group_id", version="v44.3") == 8
+    assert f.column_for("group_id", version="v50.0") == 7
+
+
+def test_version_override_applied_at_extraction(tmp_path: Path) -> None:
+    """End-to-end: AnnoFrame passes version_label, so a v50.0-layout HO file reads
+    group_id from col 7 and the date from col 5 — NOT the base (v44.3) col 8 / col 6,
+    which would land on a different field."""
+    hdr = [
+        "Index",
+        "Version ID",
+        "Master ID",
+        "Publication",
+        "Date mean in BP",
+        "Full Date",
+        "Group Label",
+        "Locality",
+        "Country",
+        "Lat.",
+        "Long.",
+        "Data source",
+        "Coverage on autosomal targets",
+        "SNPs hit on autosomal targets",
+        "Sex",
+        "Library type",
+        "ASSESSMENT",
+        "ASSESSMENT REASONING",
+    ]
+    row = [
+        "0",
+        "S1.SG",
+        "S1",
+        "Pub",
+        "4844",
+        "x",
+        "RightGroup",
+        "WrongIfBase",
+        "Loc",
+        "0",
+        "0",
+        "src",
+        "1.2",
+        "500000",
+        "M",
+        "ss",
+        "PASS",
+        "ok",
+    ]
+    p = tmp_path / "v50.0_HO_layout.anno"
+    p.write_text("\t".join(hdr) + "\n" + "\t".join(row) + "\n")
+
+    af = AnnoFrame.from_path(p, version_label="v50.0")
+    assert af.schema_class == SchemaClass.F
+    assert af.group_id.iloc[0] == "RightGroup"  # override col 7, not base col 8
+    assert af.date_calbp.iloc[0] == 4844  # override col 5, not base col 6 ('x')
+
+
+def test_version_override_class_a_v50_dates(tmp_path: Path) -> None:
+    """Headline-bug guard, end-to-end: a v50.0 1240K file reads its date from
+    col 9 (override), NOT col 10 — which holds the SD and is what class A's base
+    v44.3 layout wrongly read (e.g. I0626_all resolved to date_calbp=173 instead
+    of 3850)."""
+    ncols = 44  # v50.0 1240K width
+    header = ["Index", "Version ID"] + [f"col{i}" for i in range(3, ncols + 1)]
+    row = [""] * ncols
+    row[0] = "0"  # Index
+    row[1] = "Sample1.SG"  # Version ID -> genetic_id (col 2)
+    row[8] = "3850"  # col 9: v50.0 date_mean_bp (override)
+    row[9] = "173"  # col 10: the date SD == class A's base date_mean_bp (the bug)
+    p = tmp_path / "v50.0_1240K_layout.anno"
+    p.write_text("\t".join(header) + "\n" + "\t".join(row) + "\n")
+
+    af = AnnoFrame.from_path(p, version_label="v50.0")
+    assert af.schema_class == SchemaClass.A
+    assert af.date_calbp.iloc[0] == 3850  # override col 9, not base col 10 (173)
+
+
+def test_duplicate_version_labels_rejected(tiny_anno_paths: dict[SchemaClass, Path]) -> None:
+    """Class A (1240K) and class F (HO) both apply to v50.0 and infer the same
+    label. The N-frame version-keyed flows (cohort, lookup) must reject the
+    collision rather than silently overwrite one panel's data. Two same-version
+    frames are fine for positional 2-frame flows (diff/join), so the guard lives
+    in ensure_unique_versions, not detect_bridge."""
+    af_a = AnnoFrame.from_path(tiny_anno_paths[SchemaClass.A], version_label="v50.0")
+    af_f = AnnoFrame.from_path(tiny_anno_paths[SchemaClass.F], version_label="v50.0")
+    with pytest.raises(UsageError, match="share version label"):
+        ensure_unique_versions([af_a, af_f])
+    # Distinct versions pass through.
+    af_c = AnnoFrame.from_path(tiny_anno_paths[SchemaClass.C])
+    ensure_unique_versions([af_a, af_c])
+    # Same version + same class is the pre-existing degenerate case join/turnover
+    # rely on — it is NOT rejected (only cross-class label collisions are).
+    af_a2 = AnnoFrame.from_path(tiny_anno_paths[SchemaClass.A], version_label="v50.0")
+    ensure_unique_versions([af_a, af_a2])
+
+
+# A v50.0 Human Origins layout (class F): 'Representative contact' dropped, so
+# every field from Date mean onward sits one column left of the v44.3 base.
+_V50_HO_HEADER = [
+    "Index", "Version ID", "Master ID", "Publication", "Date mean in BP", "Full Date",
+    "Group Label", "Locality", "Country", "Lat.", "Long.", "Data source",
+    "Coverage on autosomal targets", "SNPs hit on autosomal targets", "Sex", "Library type",
+    "ASSESSMENT", "ASSESSMENT REASONING",
+]  # fmt: skip
+
+
+def test_layout_detected_from_headers_not_label(tmp_path: Path) -> None:
+    """The column layout is chosen from header CONTENT, so a v50.0-layout HO file
+    reads correctly even when its version label is missing or wrong — the deeper
+    fix for trusting an inferred filename label."""
+    row = ["0", "S1.SG", "S1", "Pub", "4844", "x", "RightGroup", "Loc", "C", "0", "0",
+           "src", "1.2", "500000", "M", "ss", "PASS", "ok"]  # fmt: skip
+    p = tmp_path / "no_recognizable_version.anno"
+    p.write_text("\t".join(_V50_HO_HEADER) + "\n" + "\t".join(row) + "\n")
+
+    # Filename infers no version → stem fallback; headers must still pick v50.0.
+    af = AnnoFrame.from_path(p)
+    assert af.schema_class == SchemaClass.F
+    assert af.layout_version == "v50.0"  # selected from headers, not the label
+    assert af.group_id.iloc[0] == "RightGroup"  # override col 7, not base col 8
+    assert af.date_calbp.iloc[0] == 4844  # override col 5, not base col 6 ('x')
+
+    # An explicitly WRONG label does not override the header-detected layout.
+    af_wrong = AnnoFrame.from_path(p, version_label="v44.3")
+    assert af_wrong.layout_version == "v50.0"
+    assert af_wrong.group_id.iloc[0] == "RightGroup"
+
+
+def test_base_layout_kept_despite_wrong_label(tiny_anno_paths: dict[SchemaClass, Path]) -> None:
+    """The reverse: a base-layout (v44.3) HO file mislabeled v50.0 still reads the
+    base columns — header content wins over the label in both directions."""
+    af = AnnoFrame.from_path(tiny_anno_paths[SchemaClass.F], version_label="v50.0")
+    assert af.layout_version is None  # headers say base, not the v50.0 label
+    assert af.group_id.iloc[0] == "Synth_Test_Population"  # base col 8, not override col 7
+    assert af.date_calbp.iloc[0] == 1639  # base col 6
+
+
+def test_select_layout_version_ties_fall_back_to_label() -> None:
+    """When headers are uninformative (no field names line up — e.g. a synthetic
+    file with placeholder headers), selection falls back to the version label."""
+    a = load_schema(SchemaClass.A)
+    placeholder = ["index", "version_id"] + [f"col{i}" for i in range(3, 45)]
+    assert a.select_layout_version(placeholder, fallback_version="v50.0") == "v50.0"
+    assert a.select_layout_version(placeholder, fallback_version="v44.3") is None
+    assert a.select_layout_version(placeholder, fallback_version=None) is None
+
+
+def test_version_override_most_specific_key_wins() -> None:
+    """When several override keys match a version label, the most specific
+    (longest) key wins, independent of YAML/dict ordering."""
+    for overrides in (
+        {"v50": {"date_mean_bp": 8}, "v50.0": {"date_mean_bp": 9}},
+        {"v50.0": {"date_mean_bp": 9}, "v50": {"date_mean_bp": 8}},  # reversed order
+    ):
+        defn = _mini_class_def(overrides)
+        assert defn.column_for("date_mean_bp", version="v50.0") == 9  # both match → most specific
+        assert defn.column_for("date_mean_bp", version="v50.3") == 8  # only 'v50' matches
+        assert defn.column_for("date_mean_bp", version="v51.0") == 10  # neither → base
+
+
+def test_validate_version_overrides_rejects_bad_entries() -> None:
+    """Load-time validation catches hand-authoring mistakes that would otherwise
+    be silently ignored at lookup time."""
+    with pytest.raises(InvariantViolation, match="not in this class"):
+        validate_version_overrides(_mini_class_def({"v50.0": {"no_such_field": 9}}))
+    with pytest.raises(InvariantViolation, match="outside the valid column range"):
+        validate_version_overrides(_mini_class_def({"v50.0": {"date_mean_bp": 99}}))
+    # A valid override passes (no raise).
+    validate_version_overrides(_mini_class_def({"v50.0": {"date_mean_bp": 9}}))
+
+
+def test_validate_version_overrides_rejects_column_collisions() -> None:
+    """Load-time validation catches an override that lands a field on a column
+    already held by another field in the same version's resolved layout — the
+    exact silent bug overrides exist to fix (v50.0 date_method had no override and
+    shared col 9 with the date_mean_bp override)."""
+    # Two fields at cols 8 and 9; an override drops date_mean_bp onto col 8 (where
+    # date_method already sits and has no override) → collision.
+    defn = SchemaClassDef.from_dict(
+        {
+            "class_id": "A",
+            "n_columns": 44,
+            "detection_signature": {
+                "col_0_normalized": "index",
+                "col_1_normalized": "version_id",
+            },
+            "fields": {
+                "date_method": {"column": 8, "normalized_header": "method_for_determining_date"},
+                "date_mean_bp": {"column": 9, "normalized_header": "date_mean_in_bp"},
+            },
+            "version_overrides": {"v50.0": {"date_mean_bp": 8}},
+        }
+    )
+    with pytest.raises(InvariantViolation, match="both resolve to column 8"):
+        validate_version_overrides(defn)
+    # The real class-A YAML (date_method + dates all shifted) has no collision.
+    validate_version_overrides(load_schema(SchemaClass.A))
 
 
 # === LLD-level unit tests ===

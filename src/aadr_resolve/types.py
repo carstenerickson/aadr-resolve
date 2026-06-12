@@ -15,13 +15,14 @@ from typing import Any, Literal
 
 
 class SchemaClass(Enum):
-    """One of five bench-verified schema classes (HLD §`.anno` schema registry)."""
+    """Bench-verified schema classes (HLD §`.anno` schema registry)."""
 
-    A = "A"  # v44.3, v50.0; has Index col; "Version ID" at col 2
+    A = "A"  # v44.3, v50.0 (1240K); has Index col; "Version ID" at col 2
     B = "B"  # v52.2; has Index col; "Genetic ID" at col 2
     C = "C"  # v54.1; Index dropped; "Genetic ID" at col 1
     D = "D"  # v62.0; same as C with cols added back
     E = "E"  # v66.0; Master ID renamed to Individual ID; new Persistent Genetic ID col 2
+    F = "F"  # v44.3, v50.0 (Human Origins); minimal 18-col schema; "Group Label" at col 8
 
 
 class ExitCode(IntEnum):
@@ -73,6 +74,13 @@ class SchemaClassDef:
     fields: dict[str, FieldMapping]
     notes: tuple[str, ...]
     not_present: tuple[str, ...]
+    # Per-version column overrides: {version_key: {canonical_field: 1-based column}}.
+    # Some AADR releases share a detection signature but place fields differently
+    # (e.g. v44.3 has a 'Representative contact' column that shifts v50.0's dates).
+    # `fields` holds the base layout; a release whose label matches a key here uses
+    # the overridden columns. Detection still picks the class by signature — the
+    # version_label (which the loader has) selects the layout within it.
+    version_overrides: dict[str, dict[str, int]] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SchemaClassDef:
@@ -113,6 +121,12 @@ class SchemaClassDef:
         notes = tuple(data.get("notes", []))
         not_present = tuple(data.get("not_present", []))
 
+        overrides_raw = data.get("version_overrides", {}) or {}
+        version_overrides = {
+            str(ver): {str(f): int(c) for f, c in cols.items()}
+            for ver, cols in overrides_raw.items()
+        }
+
         return cls(
             class_id=class_id,
             applies_to=applies_to,
@@ -121,15 +135,42 @@ class SchemaClassDef:
             fields=fields,
             notes=notes,
             not_present=not_present,
+            version_overrides=version_overrides,
         )
 
     def has_field(self, canonical: str) -> bool:
         return canonical in self.fields
 
-    def column_for(self, canonical: str) -> int:
+    @staticmethod
+    def _version_matches(version: str, key: str) -> bool:
+        """A version_overrides key matches a release label by exact match or on a
+        `.`/`_` boundary (so `v50.0` matches `v50.0`, `v50.0.p1`, `v50.0_HO` but
+        not `v50.01`)."""
+        return version == key or version.startswith(f"{key}.") or version.startswith(f"{key}_")
+
+    def override_column(self, canonical: str, version: str | None) -> int | None:
+        """The version_overrides column for `canonical` at `version`, or None if
+        no override applies. When several keys match (e.g. `v50.0` and a broader
+        `v50`), the most specific — longest — key wins, so the result is
+        independent of YAML/dict ordering."""
+        if version is None:
+            return None
+        best_key: str | None = None
+        for key, cols in self.version_overrides.items():
+            if (
+                canonical in cols
+                and self._version_matches(version, key)
+                and (best_key is None or len(key) > len(best_key))
+            ):
+                best_key = key
+        return self.version_overrides[best_key][canonical] if best_key is not None else None
+
+    def column_for(self, canonical: str, version: str | None = None) -> int:
         """Return the 1-indexed column position for a canonical field.
 
-        Raises MissingNativeFieldError (deferred import) if absent.
+        If `version` matches a key in `version_overrides` and that release
+        relocates this field, the overridden column wins over the base `fields`
+        layout. Raises MissingNativeFieldError (deferred import) if absent.
         """
         if canonical not in self.fields:
             from .errors import MissingNativeFieldError
@@ -138,7 +179,72 @@ class SchemaClassDef:
                 f"field {canonical!r} not present in schema class "
                 f"{self.class_id.value} (applies to {list(self.applies_to)})"
             )
-        return self.fields[canonical].column
+        override = self.override_column(canonical, version)
+        return override if override is not None else self.fields[canonical].column
+
+    def resolved_columns(self, version: str | None = None) -> dict[str, tuple[int, int | None]]:
+        """Map each canonical field to `(resolved_column, base_column_if_overridden)`
+        for `version`. The second element is None when the field uses its base
+        `fields` column; otherwise it is the base column the override replaced.
+
+        Shared by the `schema` diagnostic's text and JSON renderers so they can't
+        disagree about which column a field maps to for a release."""
+        out: dict[str, tuple[int, int | None]] = {}
+        for canonical, mapping in self.fields.items():
+            resolved = self.column_for(canonical, version=version)
+            out[canonical] = (resolved, mapping.column if resolved != mapping.column else None)
+        return out
+
+    def matched_override_key(self, version: str | None) -> str | None:
+        """The version_overrides key a version LABEL selects (longest match wins),
+        or None. Used to compare a filename-inferred layout against the one the
+        actual headers imply."""
+        if version is None:
+            return None
+        best: str | None = None
+        for key in self.version_overrides:
+            if self._version_matches(version, key) and (best is None or len(key) > len(best)):
+                best = key
+        return best
+
+    def _layout_match_score(self, version: str | None, normalized_headers: list[str]) -> int:
+        """How many mapped fields' `normalized_header` match the actual normalized
+        header at the field's column under the layout selected by `version`."""
+        score = 0
+        for canonical, mapping in self.fields.items():
+            col = self.column_for(canonical, version=version)
+            if 1 <= col <= len(normalized_headers) and normalized_headers[col - 1] == (
+                mapping.normalized_header
+            ):
+                score += 1
+        return score
+
+    def select_layout_version(
+        self, normalized_headers: list[str], *, fallback_version: str | None = None
+    ) -> str | None:
+        """Choose which `version_overrides` layout the file's actual headers match,
+        independent of any (possibly wrong or uninferred) filename version label.
+
+        For the base `fields` layout and each override layout, count how many
+        mapped fields' `normalized_header` line up with the actual header at that
+        field's column. Headers DECIDE when they favor one layout: an override that
+        out-matches the base is selected; a base that out-matches every override
+        wins outright. Only when headers are uninformative (a tie — e.g. a synthetic
+        file with placeholder headers) does it fall back to matching the version
+        label. Returns the winning override key, or None for the base layout."""
+        if not self.version_overrides:
+            return None
+        base_score = self._layout_match_score(None, normalized_headers)
+        scored = [
+            (self._layout_match_score(key, normalized_headers), len(key), key)
+            for key in self.version_overrides
+        ]
+        best_override_score, _, best_override_key = max(scored)
+        if best_override_score > base_score:
+            return best_override_key  # headers point to an override layout
+        if best_override_score < base_score:
+            return None  # headers point to the base layout
+        return self.matched_override_key(fallback_version)  # tie → trust the label
 
 
 # === Day-4: MID-rename bridge types ===

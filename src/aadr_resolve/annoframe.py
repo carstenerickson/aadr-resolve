@@ -32,6 +32,11 @@ class AnnoFrame:
     # (e.g., aadr-subset) can call resolve_master_ids without re-tracking
     # paths separately.
     path: Path | None = field(default=None, compare=False)
+    # The version_overrides layout key selected from the actual header content
+    # (None = base layout). Set by the loader; drives column resolution so that a
+    # release with a shifted layout is read correctly even when its filename
+    # version label is wrong or couldn't be inferred. See SchemaClassDef.
+    layout_version: str | None = field(default=None, compare=False)
     # Day-2 caches; declared here so the dataclass shape is stable.
     _date_calbp_cache: pd.Series | None = field(default=None, repr=False, compare=False)
     _coverage_cache: dict[str, pd.Series] = field(default_factory=dict, repr=False, compare=False)
@@ -80,7 +85,7 @@ class AnnoFrame:
 
     @property
     def persistent_genetic_id(self) -> pd.Series | None:
-        """v66+ only (class E). Returns None for classes A-D.
+        """v66+ only (class E). Returns None for every class but E.
 
         Int64 nullable Series of the numeric Persistent Genetic ID column."""
         if self.schema_class != SchemaClass.E:
@@ -155,8 +160,12 @@ class AnnoFrame:
     # === Internal helpers ===
 
     def _raw_column(self, canonical_field: str) -> pd.Series:
-        """Raw string Series for a canonical field. Raises if absent in class."""
-        col_idx = self.schema_def.column_for(canonical_field)
+        """Raw string Series for a canonical field. Raises if absent in class.
+
+        Resolves via self.layout_version — the layout the loader selected from the
+        actual headers — so a release with a shifted column layout reads correctly
+        regardless of its filename version label."""
+        col_idx = self.schema_def.column_for(canonical_field, version=self.layout_version)
         return self.df.iloc[:, col_idx - 1]
 
     # === Diagnostic ===
@@ -164,12 +173,19 @@ class AnnoFrame:
     def to_dict(self) -> dict[str, Any]:
         """Serializable summary for the `schema` subcommand's JSON output."""
         mapped_fields: dict[str, dict[str, Any]] = {}
+        # Report the column actually used for THIS release, not the base layout —
+        # version_overrides can relocate a field (e.g. v50.0 dates).
+        resolved = self.schema_def.resolved_columns(self.layout_version)
         for canonical, mapping in self.schema_def.fields.items():
-            mapped_fields[canonical] = {
-                "column": mapping.column,
+            col, base = resolved[canonical]
+            entry: dict[str, Any] = {
+                "column": col,
                 "normalized_header": mapping.normalized_header,
                 "display_header": mapping.display_header,
             }
+            if base is not None:
+                entry["base_column"] = base
+            mapped_fields[canonical] = entry
         return {
             "version": self.version,
             "schema_class": self.schema_class.value,
@@ -187,3 +203,33 @@ class AnnoFrame:
             f"schema_class={self.schema_class.value!r}, "
             f"n_rows={self.n_rows}, n_columns={self.n_columns})"
         )
+
+
+def ensure_unique_versions(anno_frames: list[AnnoFrame]) -> None:
+    """Reject two frames that share a version label but belong to DIFFERENT schema
+    classes.
+
+    The N-frame cross-version flows (cohort manifest, lookup) key per-version state
+    by `version_label`. Before class F, each version label mapped to exactly one
+    class, so a label uniquely identified a layout. Class F (early Human Origins)
+    newly shares v44.3/v50.0 with class A (1240K), so the v50.0 1240K and v50.0 HO
+    panels both infer `v50.0` while carrying *different* data — keying both by
+    `v50.0` would silently overwrite one panel (last-writer-wins). Reject that.
+
+    (Two same-version, same-class frames remain allowed: that is a pre-existing
+    degenerate case the join/turnover flows rely on, and `diff`/`join` compare two
+    frames positionally rather than by a version-keyed dict.)"""
+    from .errors import UsageError
+
+    seen: dict[str, AnnoFrame] = {}
+    for af in anno_frames:
+        prev = seen.get(af.version)
+        if prev is not None and prev.schema_class != af.schema_class:
+            raise UsageError(
+                f"two .anno files share version label {af.version!r} but are different "
+                f"schema classes ({prev.schema_class.value} and {af.schema_class.value}) — "
+                f"e.g. the 1240K and Human Origins panels of one release. These flows key "
+                f"per-version state by label, so they can't be combined in a single run. "
+                f"Supply one .anno per version, or pass distinct --version-label values."
+            )
+        seen.setdefault(af.version, af)

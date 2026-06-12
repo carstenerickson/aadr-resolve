@@ -36,6 +36,12 @@ from pathlib import Path
 # Add new entries here when a new AADR release lands.
 # Filenames match what the standard Dataverse fetch in scripts/README.md
 # downloads. Override at runtime via --anno-map if your filenames differ.
+#
+# NOTE: this generator emits a single column map per class; it does NOT emit the
+# `version_overrides:` block. Classes A (v50.0 dates) and F (the HO panel) carry
+# hand-maintained version_overrides derived from the differing real headers — if
+# you regenerate those classes, re-add their overrides afterward (review the diff).
+# Class F (early Human Origins) is intentionally absent below: it's hand-authored.
 # ---------------------------------------------------------------------------
 DEFAULT_FILENAMES: dict[str, list[tuple[str, str]]] = {
     "A": [
@@ -372,7 +378,7 @@ def main() -> int:
         nargs="*",
         choices=list(DEFAULT_FILENAMES),
         default=None,
-        help="Class IDs to regenerate (default: all five).",
+        help="Class IDs to regenerate (default: all).",
     )
     parser.add_argument(
         "--anno-dir",

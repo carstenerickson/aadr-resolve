@@ -11,7 +11,7 @@ from typing import Literal
 
 import pandas as pd
 
-from .annoframe import AnnoFrame
+from .annoframe import AnnoFrame, ensure_unique_versions
 from .types import LookupResult, LookupRowRecord, MIDBridge, SchemaClass
 
 _MatchedVia = Literal["individual_id", "genetic_id", "not_found"]
@@ -43,6 +43,10 @@ def lookup_single(
       - 'individual_id_renamed' (≥1 bridge event traversed for this individual)."""
     if not anno_frames:
         return LookupResult(query=query, individual_id_canonical=query, matched_via="not_found")
+
+    # per_version below is keyed by version label; reject duplicates (e.g. v50.0
+    # 1240K + v50.0 HO) before one panel's rows silently overwrite the other's.
+    ensure_unique_versions(anno_frames)
 
     if bridge is None:
         bridge = MIDBridge()
@@ -185,7 +189,7 @@ def _safe_int64_column(af: AnnoFrame, canonical: str, mask: pd.Series) -> list[i
 def _safe_pgid_column(af: AnnoFrame, mask: pd.Series) -> list[int | None]:
     """Pull persistent_genetic_id (class E only); return Python ints or None.
 
-    Returns [None, None, ...] for classes A–D (no PGID column)."""
+    Returns [None, None, ...] for every class but E (no PGID column)."""
     if af.schema_class != SchemaClass.E:
         return [None] * int(mask.sum())
     pgid_series = af.persistent_genetic_id
