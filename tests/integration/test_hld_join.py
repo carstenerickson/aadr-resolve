@@ -88,10 +88,8 @@ def test_join_cmd_smoke(fixtures_dir: Path, tmp_path: Path) -> None:
     result = runner.invoke(
         cli_group,
         [
-            "--version-label",
-            "v62.0",
             "join",
-            str(fixtures_dir / "loschbour_v62.anno"),
+            str(fixtures_dir / "loschbour_v54.anno"),
             str(fixtures_dir / "loschbour_v62.anno"),
             "-o",
             str(out_path),
@@ -118,10 +116,8 @@ def test_join_cmd_quiet_suppresses_progress_line(fixtures_dir: Path, tmp_path: P
     result_noisy = runner.invoke(
         cli_group,
         [
-            "--version-label",
-            "v62.0",
             "join",
-            str(fixtures_dir / "loschbour_v62.anno"),
+            str(fixtures_dir / "loschbour_v54.anno"),
             str(fixtures_dir / "loschbour_v62.anno"),
             "-o",
             str(out_path),
@@ -137,10 +133,8 @@ def test_join_cmd_quiet_suppresses_progress_line(fixtures_dir: Path, tmp_path: P
         cli_group,
         [
             "--quiet",
-            "--version-label",
-            "v62.0",
             "join",
-            str(fixtures_dir / "loschbour_v62.anno"),
+            str(fixtures_dir / "loschbour_v54.anno"),
             str(fixtures_dir / "loschbour_v62.anno"),
             "-o",
             str(out_path_quiet),
@@ -158,10 +152,8 @@ def test_join_cmd_json_output(fixtures_dir: Path, tmp_path: Path) -> None:
     result = runner.invoke(
         cli_group,
         [
-            "--version-label",
-            "v62.0",
             "join",
-            str(fixtures_dir / "loschbour_v62.anno"),
+            str(fixtures_dir / "loschbour_v54.anno"),
             str(fixtures_dir / "loschbour_v62.anno"),
             "-o",
             str(out_path),

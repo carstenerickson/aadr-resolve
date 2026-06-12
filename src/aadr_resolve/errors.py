@@ -50,12 +50,15 @@ class SchemaDetectionError(InvariantViolation):
         known_lines = "\n".join(
             f"  class {cls}: ncols={n}, col0={c0!r}, col1={c1!r}" for cls, n, c0, c1 in known
         )
+        # Derive the choice list from the registered classes so it can't go stale
+        # as classes are added (class F was once omitted from a hardcoded {A..E}).
+        classes = "|".join(sorted({cls for cls, _n, _c0, _c1 in known}))
         super().__init__(
             f"unknown .anno schema signature.\n"
             f"  Observed: ncols={observed[0]}, col0={observed[1]!r}, "
             f"col1={observed[2]!r}\n"
             f"  Known signatures:\n{known_lines}\n"
-            f"Use --schema-override {{A|B|C|D|E}} to force a class, or "
+            f"Use --schema-override {{{classes}}} to force a class, or "
             f"--version-label LABEL if the filename doesn't match a known pattern."
         )
 

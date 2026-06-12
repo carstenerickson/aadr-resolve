@@ -9,7 +9,7 @@ from pathlib import Path
 import pandas as pd
 
 from .annoframe import AnnoFrame, ensure_unique_versions
-from .date_norm import to_int64_nullable
+from .date_norm import to_int64_nullable_defensive
 from .errors import IOFailure, UsageError
 from .gates import TurnoverGateResult
 from .group_classifier import classify_group_change
@@ -208,8 +208,8 @@ def build_manifest(
          library_token.collapse_to_individual.
       e. Sort rows: (cohort_label, individual_id_canonical, library_token).
       f. Pack into CohortManifest."""
-    # Per-version manifest columns are keyed by version label; reject duplicates
-    # (e.g. v50.0 1240K + v50.0 HO) before they silently overwrite each other.
+    # Per-version manifest columns are keyed by version label; reject any duplicate
+    # label (cross-panel or same-class patch) before it silently overwrites a column.
     ensure_unique_versions(anno_frames)
     sorted_afs = sorted(anno_frames, key=version_tuple)
     sorted_versions = tuple(af.version for af in sorted_afs)
@@ -452,7 +452,7 @@ def _snps_hit_for_gid(af: AnnoFrame, gid: str) -> int | None:
     if not mask.any():
         return None
     raw = af._raw_column("snps_hit_1240k")
-    typed = to_int64_nullable(raw)
+    typed = to_int64_nullable_defensive(raw)
     selected = typed[mask]
     if selected.empty:
         return None

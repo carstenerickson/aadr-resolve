@@ -90,10 +90,10 @@ class AnnoFrame:
         Int64 nullable Series of the numeric Persistent Genetic ID column."""
         if self.schema_class != SchemaClass.E:
             return None
-        from .date_norm import to_int64_nullable
+        from .date_norm import to_int64_nullable_defensive
 
         raw = self._raw_column("persistent_genetic_id")
-        return to_int64_nullable(raw).copy()
+        return to_int64_nullable_defensive(raw).copy()
 
     # === Int64-nullable date accessors ===
 
@@ -103,21 +103,25 @@ class AnnoFrame:
 
         Cached on first access; cleared by reset_caches(). Per HLD §Date
         normalization, bench-verified clean across all 6 versions (0 nulls;
-        range 0-185000)."""
+        range 0-185000). Non-integer cells in a future/non-public release coerce
+        to <NA> rather than raising (consistent with coverage's float coercion)."""
         if self._date_calbp_cache is None:
-            from .date_norm import to_int64_nullable
+            from .date_norm import to_int64_nullable_defensive
 
             raw = self._raw_column("date_mean_bp")
-            self._date_calbp_cache = to_int64_nullable(raw)
+            self._date_calbp_cache = to_int64_nullable_defensive(raw)
         return self._date_calbp_cache.copy()
 
     @property
     def date_sd_bp(self) -> pd.Series:
-        """Date SD (BP) as nullable Int64. Used by CI-aware time-series cohorts."""
-        from .date_norm import to_int64_nullable
+        """Date SD (BP) as nullable Int64. Used by CI-aware time-series cohorts.
+
+        Non-integer cells coerce to <NA> rather than raising (a dirty future
+        release degrades gracefully instead of crashing the load)."""
+        from .date_norm import to_int64_nullable_defensive
 
         raw = self._raw_column("date_sd_bp")
-        return to_int64_nullable(raw).copy()
+        return to_int64_nullable_defensive(raw).copy()
 
     # === Float64 coverage accessors ===
 
@@ -206,30 +210,41 @@ class AnnoFrame:
 
 
 def ensure_unique_versions(anno_frames: list[AnnoFrame]) -> None:
-    """Reject two frames that share a version label but belong to DIFFERENT schema
-    classes.
+    """Reject any two frames that share a version label.
 
-    The N-frame cross-version flows (cohort manifest, lookup) key per-version state
-    by `version_label`. Before class F, each version label mapped to exactly one
-    class, so a label uniquely identified a layout. Class F (early Human Origins)
-    newly shares v44.3/v50.0 with class A (1240K), so the v50.0 1240K and v50.0 HO
-    panels both infer `v50.0` while carrying *different* data — keying both by
-    `v50.0` would silently overwrite one panel (last-writer-wins). Reject that.
+    The cross-version flows (cohort, join, lookup) store per-version state by
+    `version_label` in plain dicts, so two frames at one label silently overwrite
+    each other — one frame's data vanishes with no error. A shared label arises two
+    ways, both rejected because the per-version data collides either way:
 
-    (Two same-version, same-class frames remain allowed: that is a pre-existing
-    degenerate case the join/turnover flows rely on, and `diff`/`join` compare two
-    frames positionally rather than by a version-keyed dict.)"""
+      - DIFFERENT classes: class F (early Human Origins) shares v44.3/v50.0 with
+        class A (1240K), so the 1240K and HO panels of one release both infer e.g.
+        `v50.0` while carrying different data.
+      - SAME class: a patch release infers the same label as its base (e.g.
+        `aadr_v54.1.p1_..._public.anno` and `aadr_v54.1_..._public.anno` both infer
+        `v54.1`, both class C), or the same file is supplied twice.
+
+    Every cross-version flow spans distinct versions, so a shared label is always a
+    mistake — there is no flow that legitimately pairs two frames at one label."""
     from .errors import UsageError
 
     seen: dict[str, AnnoFrame] = {}
     for af in anno_frames:
         prev = seen.get(af.version)
-        if prev is not None and prev.schema_class != af.schema_class:
-            raise UsageError(
-                f"two .anno files share version label {af.version!r} but are different "
-                f"schema classes ({prev.schema_class.value} and {af.schema_class.value}) — "
-                f"e.g. the 1240K and Human Origins panels of one release. These flows key "
-                f"per-version state by label, so they can't be combined in a single run. "
-                f"Supply one .anno per version, or pass distinct --version-label values."
+        if prev is not None:
+            same_class = prev.schema_class == af.schema_class
+            detail = (
+                f"both schema class {af.schema_class.value} — e.g. a release and its "
+                ".p1 patch, or the same file twice"
+                if same_class
+                else f"different schema classes ({prev.schema_class.value} and "
+                f"{af.schema_class.value}) — e.g. the 1240K and Human Origins panels "
+                "of one release"
             )
-        seen.setdefault(af.version, af)
+            raise UsageError(
+                f"two .anno files share version label {af.version!r} ({detail}). These "
+                f"flows key per-version state by label, so they can't be combined in a "
+                f"single run. Supply one .anno per version, or pass distinct "
+                f"--version-label values."
+            )
+        seen[af.version] = af

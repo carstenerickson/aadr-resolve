@@ -235,11 +235,13 @@ def test_version_override_class_a_v50_dates(tmp_path: Path) -> None:
 
 
 def test_duplicate_version_labels_rejected(tiny_anno_paths: dict[SchemaClass, Path]) -> None:
-    """Class A (1240K) and class F (HO) both apply to v50.0 and infer the same
-    label. The N-frame version-keyed flows (cohort, lookup) must reject the
-    collision rather than silently overwrite one panel's data. Two same-version
-    frames are fine for positional 2-frame flows (diff/join), so the guard lives
-    in ensure_unique_versions, not detect_bridge."""
+    """The N-frame version-keyed flows (cohort, lookup) key per-version state by
+    label, so two frames at one label silently overwrite each other. Both kinds of
+    collision must be rejected: different-class (class A 1240K vs class F HO, both
+    inferring v50.0) and same-class (a release and its .p1 patch, or the same file
+    twice — both inferring e.g. v54.1). The guard lives in ensure_unique_versions
+    (cohort/lookup), not detect_bridge; diff/join compare positionally and don't
+    call it."""
     af_a = AnnoFrame.from_path(tiny_anno_paths[SchemaClass.A], version_label="v50.0")
     af_f = AnnoFrame.from_path(tiny_anno_paths[SchemaClass.F], version_label="v50.0")
     with pytest.raises(UsageError, match="share version label"):
@@ -247,10 +249,11 @@ def test_duplicate_version_labels_rejected(tiny_anno_paths: dict[SchemaClass, Pa
     # Distinct versions pass through.
     af_c = AnnoFrame.from_path(tiny_anno_paths[SchemaClass.C])
     ensure_unique_versions([af_a, af_c])
-    # Same version + same class is the pre-existing degenerate case join/turnover
-    # rely on — it is NOT rejected (only cross-class label collisions are).
+    # Same version + same class also collapses a per-version dict (e.g. v54.1 and
+    # its v54.1.p1 patch both infer 'v54.1', both class C) — also rejected.
     af_a2 = AnnoFrame.from_path(tiny_anno_paths[SchemaClass.A], version_label="v50.0")
-    ensure_unique_versions([af_a, af_a2])
+    with pytest.raises(UsageError, match="share version label"):
+        ensure_unique_versions([af_a, af_a2])
 
 
 # A v50.0 Human Origins layout (class F): 'Representative contact' dropped, so
@@ -445,14 +448,50 @@ def test_detect_class_unknown_raises(schemas: dict[SchemaClass, SchemaClassDef])
     bogus = ["something", "totally_different_signature"] + [f"col_{i}" for i in range(40)]
     with pytest.raises(SchemaDetectionError) as exc_info:
         detect_class(bogus, schemas)
-    # Error message includes the suggested override.
-    assert "--schema-override" in str(exc_info.value)
+    # Error message includes the suggested override, listing EVERY registered class
+    # (derived from `known`, so it can't go stale — class F was once omitted).
+    msg = str(exc_info.value)
+    assert "--schema-override" in msg
+    for cls in SchemaClass:
+        assert cls.value in msg.split("Use --schema-override")[1]
 
 
 def test_detect_class_short_header_raises(schemas: dict[SchemaClass, SchemaClassDef]) -> None:
     """A header with <2 columns can't possibly match; should raise cleanly."""
     with pytest.raises(SchemaDetectionError):
         detect_class(["only_one_column"], schemas)
+
+
+def test_dirty_integer_cell_coerces_to_na_not_crash(
+    tiny_anno_paths: dict[SchemaClass, Path], tmp_path: Path
+) -> None:
+    """A non-integer value in an Int64 column (date mean/SD, snps, PGID) coerces to
+    <NA> instead of crashing the load. Regression: the production accessors used
+    strict to_int64_nullable, which raises ValueError on a dirty future/non-public
+    release; they now use the defensive (coercing) variant, matching coverage."""
+    lines = tiny_anno_paths[SchemaClass.C].read_text().splitlines()
+    # Corrupt the date-mean cell (class C col 8 → 0-based index 7) of row 1.
+    cells = lines[1].split("\t")
+    cells[7] = "not_an_int"
+    lines[1] = "\t".join(cells)
+    p = tmp_path / "dirty_date.anno"
+    p.write_text("\n".join(lines) + "\n")
+
+    af = AnnoFrame.from_path(p)  # must NOT raise
+    assert bool(af.date_calbp.isna().iloc[0])  # bad cell → <NA>
+    assert bool(af.date_calbp.iloc[1:].notna().any())  # other rows still parse
+
+
+def test_group_change_histogram_includes_prefix_drop() -> None:
+    """The stdout 'Group ID changes' histogram must render every GroupChangeClass,
+    including convention_restructure_prefix_drop (once omitted from the hardcoded
+    tuple, so prefix-drop events appeared in the JSON sidecar but not on stdout)."""
+    from aadr_resolve.reporting import _format_group_change_histogram
+
+    lines = _format_group_change_histogram(
+        {"convention_restructure_prefix_drop": 3}, ("v44.3", "v66.0")
+    )
+    assert any("convention_restructure_prefix_drop" in ln and "3" in ln for ln in lines)
 
 
 def test_annoframe_to_dict_summary(tiny_anno_paths: dict[SchemaClass, Path]) -> None:

@@ -26,7 +26,10 @@ from .types import ExitCode, SchemaClass
     "--schema-override",
     type=click.Choice([c.value for c in SchemaClass]),
     default=None,
-    help="Force schema class (A|B|C|D|E|F) instead of auto-detecting from header.",
+    help=(
+        f"Force schema class ({'|'.join(c.value for c in SchemaClass)}) "
+        "instead of auto-detecting from header."
+    ),
 )
 @click.option(
     "--version-label",
@@ -78,7 +81,7 @@ cli.add_command(schema_cmd, name="schema")
 cli.add_command(validate_groups_cmd, name="validate-groups")
 
 
-def main() -> int:
+def main() -> int:  # noqa: PLR0911 (one return per exit-code branch — see below)
     """Top-level entry. Catches AadrResolveError + click usage errors."""
     try:
         # Pre-warm schema registry (~5ms; surfaces YAML-parse errors early).
@@ -95,6 +98,12 @@ def main() -> int:
     except SystemExit as e:
         # click raises SystemExit(0) on --help / --version. Treat as success.
         return int(e.code) if isinstance(e.code, int) else 0
+    except OSError as e:
+        # Unwrapped I/O errors (unwritable -o path, disk full on a report write,
+        # etc.) are IO failures, not invariant violations. Map to exit 2 with a
+        # clean message rather than a traceback + exit 3.
+        click.echo(f"error: {e}", err=True)
+        return int(ExitCode.IO_FAILURE)
     except Exception:
         traceback.print_exc()
         return int(ExitCode.INVARIANT_VIOLATION)

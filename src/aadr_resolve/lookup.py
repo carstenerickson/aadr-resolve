@@ -178,10 +178,10 @@ def _safe_int64_column(af: AnnoFrame, canonical: str, mask: pd.Series) -> list[i
     schema class."""
     if not af.schema_def.has_field(canonical):
         return []
-    from .date_norm import to_int64_nullable
+    from .date_norm import to_int64_nullable_defensive
 
     raw = af._raw_column(canonical)
-    typed = to_int64_nullable(raw)
+    typed = to_int64_nullable_defensive(raw)
     selected = typed[mask]
     return [None if pd.isna(v) else int(v) for v in selected]
 

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Dirty integer cells no longer crash the load.** The `date_calbp`, `date_sd_bp`,
+  `persistent_genetic_id`, and `snps_hit_1240k` accessors used strict integer
+  coercion that raised on any non-integer cell; a future or non-public release with
+  a malformed value would abort the whole load. They now coerce any non-integer,
+  fractional, or infinite cell to `<NA>` (consistent with coverage's float
+  coercion).
+- **The cross-version flows reject two files that share a version label.** The
+  per-version manifest columns are keyed by label, so two frames at one label
+  silently overwrote each other. The guard previously caught only the cross-class
+  panel collision (1240K vs HO); it now also rejects same-class collisions (e.g. a
+  release and its `.p1` patch, which infer the same label) across `cohort`, `join`,
+  and `lookup` — every flow spans distinct versions, so a shared label is always a
+  mistake.
+- **I/O errors on output writes now exit 2, not 3.** An unwritable `-o` path (or a
+  disk-full report write) raised an unwrapped `OSError` that `main()` reported as
+  an invariant violation (exit 3) with a traceback; it now maps to `IO_FAILURE`
+  (exit 2) with a clean message.
+- **The stdout group-change histogram no longer omits `convention_restructure_prefix_drop`.**
+  Patterson-prefix-drop events were counted in the JSON sidecar but never shown in
+  the terminal summary, so stdout undercounted group changes.
+- **The schema-detection error lists every registered class.** The
+  `--schema-override {…}` hint was hardcoded to `{A|B|C|D|E}` and omitted class F;
+  it is now derived from the registered classes so it can't go stale.
+
 ## [0.4.1] — 2026-06-12
 
 ### Changed
