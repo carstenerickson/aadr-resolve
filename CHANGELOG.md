@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] — 2026-06-12
+
 ### Changed
 - **Hardened header-based layout selection.** An override layout is now only
   chosen from header content when the headers are wide enough to actually contain
