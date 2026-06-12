@@ -285,11 +285,16 @@ def test_layout_detected_from_headers_not_label(tmp_path: Path) -> None:
     assert af_wrong.group_id.iloc[0] == "RightGroup"
 
 
-def test_base_layout_kept_despite_wrong_label(tiny_anno_paths: dict[SchemaClass, Path]) -> None:
-    """The reverse: a base-layout (v44.3) HO file mislabeled v50.0 still reads the
-    base columns — header content wins over the label in both directions."""
+def test_explicit_version_label_does_not_force_layout(
+    tiny_anno_paths: dict[SchemaClass, Path],
+) -> None:
+    """Contract (issue #8): an explicit `--version-label` does NOT force the column
+    layout — header content decides. A base-layout (v44.3) HO file explicitly
+    labeled v50.0 still reads the base columns. (The other direction — a v50.0
+    layout with an explicit v44.3 label still reading v50.0 — is covered by
+    test_layout_detected_from_headers_not_label.)"""
     af = AnnoFrame.from_path(tiny_anno_paths[SchemaClass.F], version_label="v50.0")
-    assert af.layout_version is None  # headers say base, not the v50.0 label
+    assert af.layout_version is None  # headers say base, despite the v50.0 label
     assert af.group_id.iloc[0] == "Synth_Test_Population"  # base col 8, not override col 7
     assert af.date_calbp.iloc[0] == 1639  # base col 6
 

@@ -840,6 +840,15 @@ Sharp edges that have tripped up developers.
   top-level (shared) click option, but it applies to the next
   AnnoFrame loaded. The cross-check against `schema_def.applies_to`
   still runs and warns on mismatch.
+- **`--version-label` does not force the column layout.** For classes
+  whose releases shift columns under one detection signature (A, F), the
+  layout is selected from the actual header content
+  (`SchemaClassDef.select_layout_version`), not the label. An explicit
+  `--version-label` only sets the version-keying string and acts as a
+  tie-breaker when the headers are uninformative; when the headers
+  decisively indicate a layout, they win and the loader warns on
+  disagreement. (Precedence: header content > version label. There is no
+  layout-forcing flag by design — see issue #8.)
 - **Subprocess required for exit-code testing.** Click's `CliRunner`
   bypasses `cli.main()`'s exit-code translation. See
   `tests/integration/test_exit_codes.py` for the pattern.
