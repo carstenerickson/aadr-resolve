@@ -53,14 +53,18 @@ def read_anno(
     if schemas is None:
         schemas = load_all_schemas()
 
-    raw_headers = _read_header_only(path)
-    # Drop trailing-tab phantom column BEFORE schema detection. v54.1's
-    # header ends with a tab, producing an empty 37th entry that would
-    # otherwise make detect_class fail (no class declares ncols=37).
-    raw_headers, phantom_dropped = _drop_trailing_phantom_from_headers(raw_headers)
+    full_headers = _read_header_only(path)
+    # Drop the trailing-tab phantom column BEFORE schema detection. v54.1's header
+    # ends with a tab, producing an empty final entry that would otherwise make
+    # detect_class fail (no class declares that ncols). Detection uses the dropped
+    # header; the FULL header is kept for `names` below, because the data rows still
+    # carry the trailing tab — handing read_csv the dropped (narrower) names would
+    # make pandas consume the first data column as an index, shifting every field
+    # one column right (genetic_id→Master ID, date→SD).
+    detect_headers, phantom_dropped = _drop_trailing_phantom_from_headers(full_headers)
     if phantom_dropped:
         sys.stderr.write("WARNING: trailing-tab phantom column dropped from .anno header.\n")
-    schema_def = detect_class(raw_headers, schemas, override=schema_override)
+    schema_def = detect_class(detect_headers, schemas, override=schema_override)
 
     inferred_label, was_inferred = infer_version_label(path, override=version_label)
     if not was_inferred:
@@ -73,7 +77,7 @@ def read_anno(
     # label): for classes whose releases relocate fields under one detection
     # signature, the right layout is observable in the headers. This makes column
     # resolution robust to a wrong/uninferred version label.
-    normalized_headers = [normalize_header(h) for h in raw_headers]
+    normalized_headers = [normalize_header(h) for h in detect_headers]
     layout_version = schema_def.select_layout_version(
         normalized_headers, fallback_version=inferred_label
     )
@@ -99,7 +103,10 @@ def read_anno(
     # that differ only by parenthetical panel name). The schema YAML maps
     # canonical fields by COLUMN POSITION, not name, so dedup-via-suffix is
     # display-only and doesn't affect lookups.
-    unique_names = _dedup_names(raw_headers)
+    # Use the FULL header (phantom included) so names width matches the data rows,
+    # which still carry the trailing tab; the phantom column is dropped from the
+    # DataFrame post-parse by _drop_trailing_phantom below.
+    unique_names = _dedup_names(full_headers)
 
     try:
         df = pd.read_csv(
