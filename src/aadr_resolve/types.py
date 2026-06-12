@@ -148,22 +148,31 @@ class SchemaClassDef:
         not `v50.01`)."""
         return version == key or version.startswith(f"{key}.") or version.startswith(f"{key}_")
 
-    def override_column(self, canonical: str, version: str | None) -> int | None:
-        """The version_overrides column for `canonical` at `version`, or None if
-        no override applies. When several keys match (e.g. `v50.0` and a broader
-        `v50`), the most specific — longest — key wins, so the result is
-        independent of YAML/dict ordering."""
+    def _best_matching_key(
+        self, version: str | None, *, require_field: str | None = None
+    ) -> str | None:
+        """The longest `version_overrides` key whose boundary-match covers `version`
+        (and, when `require_field` is given, that relocates that field), or None.
+
+        Longest = most specific (e.g. `v50.0_HO` beats `v50.0`), so the result is
+        independent of dict ordering. Two equal-length distinct keys can't both
+        boundary-match one label — neither is a prefix of the other — so the
+        longest-key rule is never ambiguous."""
         if version is None:
             return None
-        best_key: str | None = None
+        best: str | None = None
         for key, cols in self.version_overrides.items():
-            if (
-                canonical in cols
-                and self._version_matches(version, key)
-                and (best_key is None or len(key) > len(best_key))
-            ):
-                best_key = key
-        return self.version_overrides[best_key][canonical] if best_key is not None else None
+            if require_field is not None and require_field not in cols:
+                continue
+            if self._version_matches(version, key) and (best is None or len(key) > len(best)):
+                best = key
+        return best
+
+    def override_column(self, canonical: str, version: str | None) -> int | None:
+        """The version_overrides column for `canonical` at `version`, or None if no
+        override applies — the most specific (longest) matching key wins."""
+        key = self._best_matching_key(version, require_field=canonical)
+        return self.version_overrides[key][canonical] if key is not None else None
 
     def column_for(self, canonical: str, version: str | None = None) -> int:
         """Return the 1-indexed column position for a canonical field.
@@ -196,16 +205,10 @@ class SchemaClassDef:
         return out
 
     def matched_override_key(self, version: str | None) -> str | None:
-        """The version_overrides key a version LABEL selects (longest match wins),
-        or None. Used to compare a filename-inferred layout against the one the
-        actual headers imply."""
-        if version is None:
-            return None
-        best: str | None = None
-        for key in self.version_overrides:
-            if self._version_matches(version, key) and (best is None or len(key) > len(best)):
-                best = key
-        return best
+        """The version_overrides key a version LABEL selects (most specific match
+        wins), or None. Used to compare a filename-inferred layout against the one
+        the actual headers imply."""
+        return self._best_matching_key(version)
 
     def _layout_match_score(self, version: str | None, normalized_headers: list[str]) -> int:
         """How many mapped fields' `normalized_header` match the actual normalized
@@ -234,11 +237,18 @@ class SchemaClassDef:
         label. Returns the winning override key, or None for the base layout."""
         if not self.version_overrides:
             return None
+        n = len(normalized_headers)
         base_score = self._layout_match_score(None, normalized_headers)
+        # Only let an override compete if the headers are wide enough to actually
+        # contain its relocated columns — otherwise a truncated header (not real
+        # evidence) could tip selection toward the layout with lower column numbers.
         scored = [
             (self._layout_match_score(key, normalized_headers), len(key), key)
-            for key in self.version_overrides
+            for key, cols in self.version_overrides.items()
+            if not cols or max(cols.values()) <= n
         ]
+        if not scored:  # headers too short to confirm any override → trust the label
+            return self.matched_override_key(fallback_version)
         best_override_score, _, best_override_key = max(scored)
         if best_override_score > base_score:
             return best_override_key  # headers point to an override layout

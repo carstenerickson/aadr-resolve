@@ -309,6 +309,23 @@ def test_select_layout_version_ties_fall_back_to_label() -> None:
     assert a.select_layout_version(placeholder, fallback_version=None) is None
 
 
+def test_select_layout_version_skips_override_when_headers_too_short() -> None:
+    """A truncated header that can't contain an override's relocated columns must
+    not let that override win on partial evidence — selection falls back to the
+    label instead of guessing the lower-column layout."""
+    defn = _mini_class_def({"v50.0": {"date_mean_bp": 9}})  # base col 10, override col 9
+    # Header only 5 wide: it can't contain col 9, so v50.0 cannot be confirmed from
+    # the headers — fall back to the label rather than pick it on partial evidence.
+    short = ["index", "version_id", "master_id", "publication", "date_mean_in_bp"]
+    assert defn.select_layout_version(short, fallback_version=None) is None
+    assert defn.select_layout_version(short, fallback_version="v50.0") == "v50.0"
+    # A wide-enough header with the v50.0 position (col 9) filled DOES pick it,
+    # with no label needed — header content alone is decisive.
+    wide = ["index", "version_id", "master_id", "publication", "x", "x", "x", "x"]
+    wide += ["date_mean_in_bp", "x"]  # col 9 = the override position
+    assert defn.select_layout_version(wide, fallback_version=None) == "v50.0"
+
+
 def test_version_override_most_specific_key_wins() -> None:
     """When several override keys match a version label, the most specific
     (longest) key wins, independent of YAML/dict ordering."""

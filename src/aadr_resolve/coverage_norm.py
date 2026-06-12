@@ -25,9 +25,15 @@ def resolve_coverage(af: AnnoFrame, canonical_field: str) -> pd.Series:
     Routing logic (HLD §Coverage normalization):
 
       - canonical_field == 'coverage_1240k':
-          - Classes A, B, C, E: read native column, coerce to Float64.
+          - Classes A, B, C, E, F: read native column, coerce to Float64.
             Class A maps to col 20 'Coverage on autosomal targets' (bam-cov
-            proxy; documented as imperfect for 1240k semantics).
+            proxy; documented as imperfect for 1240k semantics). Class F (early
+            Human Origins) likewise maps the HO panel's 'Coverage on autosomal
+            targets' — but the HO array is ~600K sites, not the 1.24M-site 1240k
+            panel, so for class F this value is a cross-panel PROXY, not 1240k
+            coverage. Thresholds calibrated for 1240k should not be applied
+            unadjusted to class-F coverage. (Likewise snps_hit_1240k below
+            divides by the 1240k cardinality, so its fraction under-reads for HO.)
           - Class D (v62): NO native coverage column. Returns an all-NaN
             Float64 Series of length af.n_rows. No warning emitted here —
             aadr-subset's filter layer surfaces the user-facing warning when
