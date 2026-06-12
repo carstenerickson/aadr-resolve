@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] — 2026-06-12
+
 ### Fixed
 - **Dirty integer cells no longer crash the load.** The `date_calbp`, `date_sd_bp`,
   `persistent_genetic_id`, and `snps_hit_1240k` accessors used strict integer
