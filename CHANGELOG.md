@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Hardened header-based layout selection.** An override layout is now only
+  chosen from header content when the headers are wide enough to actually contain
+  its relocated columns, so a truncated file can't tip selection onto a partial
+  match (it falls back to the version label instead). The override-key lookup used
+  by `override_column` and `matched_override_key` was unified into one
+  most-specific-match helper. (#9)
+- **Documented class F coverage as a cross-panel proxy.** Class F (early Human
+  Origins) maps the HO panel's "Coverage on autosomal targets" /
+  "SNPs hit on autosomal targets" to `coverage_1240k` / `snps_hit_1240k`, but the
+  HO array is ~600K sites, not the 1.24M-site 1240k panel — so these are proxies,
+  and 1240k-calibrated thresholds shouldn't be applied unadjusted. Behavior is
+  unchanged; `resolve_coverage`'s contract now spells this out. (#10)
+
+### Docs
+- Added [docs/RELEASE.md](docs/RELEASE.md) describing the tag → GitHub Release →
+  CI-gated PyPI publish flow and the trusted-publishing setup, resolving the stale
+  reference in `publish.yml`. (#11)
+
 ### Fixed
 - **v54.1 trailing-tab files loaded with every field shifted one column right.**
   The published v54.1 `.anno` (1240K + HO) has 36 fields in both the header and
