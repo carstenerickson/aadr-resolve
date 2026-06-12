@@ -69,6 +69,12 @@ def test_loader_v54_trailing_tab(fixtures_dir: Path) -> None:
     # (narrower) header must NOT be used as read_csv `names` — otherwise pandas
     # consumes the first data column as an index and every field shifts one column
     # right (genetic_id→Master ID, date→SD). Assert no shift.
-    assert af.genetic_id.iloc[0] == "Synth0001.DG"       # Genetic ID, not Master ID
+    assert af.genetic_id.iloc[0] == "Synth0001.DG"  # Genetic ID, not Master ID
     assert af.individual_id.iloc[0] == "Synth0001"
-    assert int(af.date_calbp.iloc[0]) == 111              # date mean, not the SD
+    assert int(af.date_calbp.iloc[0]) == 111  # date mean, not the SD
+    # Assert a LATER row too: a regression that mishandles only the index row
+    # (row 0) would still pass the checks above. Row 2 has a distinct date mean
+    # (29741) vs its SD (66), so a +1 shift there is unambiguous.
+    assert af.genetic_id.iloc[2] == "Synth0003.DG"
+    assert af.individual_id.iloc[2] == "Synth0003"
+    assert int(af.date_calbp.iloc[2]) == 29741  # date mean, not the SD (66)

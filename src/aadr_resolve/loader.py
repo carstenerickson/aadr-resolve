@@ -36,8 +36,10 @@ def read_anno(
       5. Cross-check inferred label vs schema.applies_to; stderr warn on mismatch.
       6. pandas.read_csv with: sep='\\t', dtype=str, na_filter=False,
          quoting=csv.QUOTE_NONE, encoding='utf-8', errors='replace'.
-         header=None + skiprows=1 + explicit names = raw_headers, so the
-         multi-paragraph headers don't roundtrip through pandas's parse.
+         header=None + skiprows=1 + explicit names = the FULL header (phantom
+         included), so the multi-paragraph headers don't roundtrip through
+         pandas's parse AND names width matches the data rows, which still carry
+         the trailing tab (detection uses the phantom-dropped header instead).
       7. Drop trailing-tab phantom column if present (v54.1 case).
       8. Construct AnnoFrame.
     """
