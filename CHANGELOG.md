@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-11
+
 ### Added
 - **Per-version column overrides** (`version_overrides:` in a schema YAML). Some
   AADR releases share a detection signature but place fields at different columns;
