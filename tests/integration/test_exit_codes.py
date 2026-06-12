@@ -87,6 +87,22 @@ def test_exit_2_missing_mid_bridge_file(fixtures_dir: Path, tmp_path: Path) -> N
     assert result.returncode == 2
 
 
+def test_exit_2_unwritable_output_path(tmp_path: Path) -> None:
+    """An unwrapped OSError on the output write (here `-o` points at a directory)
+    maps to exit 2 (I/O failure) with a clean message — NOT exit 3 + a traceback.
+    Regression: main()'s bare `except Exception` used to swallow OSError as an
+    invariant violation."""
+    a = tmp_path / "c.anno"
+    b = tmp_path / "d.anno"
+    write_anno(SynthSpec(SchemaClass.C), a)
+    write_anno(SynthSpec(SchemaClass.D), b)
+    # -o points at a directory → write_text raises IsADirectoryError (an OSError).
+    result = _run(["diff", str(a), str(b), "-o", str(tmp_path)])
+    assert result.returncode == 2, f"stderr:{result.stderr}"
+    assert "error: " in result.stderr  # clean message...
+    assert "Traceback" not in result.stderr  # ...not a traceback
+
+
 # === Exit 3: invariant violation ===
 
 

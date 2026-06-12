@@ -251,6 +251,7 @@ def _format_group_change_histogram(
     for cls in (
         "convention_restructure_suffix",
         "convention_restructure_country",
+        "convention_restructure_prefix_drop",
         "convention_restructure_order",
         "convention_restructure_punct",
         "partial",
