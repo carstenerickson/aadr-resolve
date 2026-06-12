@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **v54.1 trailing-tab files loaded with every field shifted one column right.**
+  The published v54.1 `.anno` (1240K + HO) has 36 fields in both the header and
+  every data row, the last being an empty trailing-tab phantom. The loader dropped
+  the phantom from the header before building `read_csv`'s `names` (35), but the
+  data rows still had 36 fields, so pandas consumed the first data column as a row
+  index — making `genetic_id` return the Master ID and `date_calbp` the date SD
+  (e.g. `ElMiron` resolved to `date_calbp=39` instead of `18775`). The full header
+  (phantom included) is now used for `names` so its width matches the data; the
+  phantom column is dropped from the DataFrame post-parse as before. The
+  `v54_trailing_tab` fixture previously carried the tab only on its header row, so
+  it never exercised the real shape — its data rows now carry it too, and the test
+  asserts field alignment (genetic_id, individual_id, date). (#14)
+
 ## [0.4.0] — 2026-06-11
 
 ### Added

@@ -211,13 +211,16 @@ def make_v54_trailing_tab_fixture(
     # phantom produced by the trailing tab below — mirroring the real files.
     header = _build_header(schema_def, ncols=min(schema_def.n_columns_set))
     rng = random.Random(54100)
-    row = _synth_row(0, header, schema_def, rng)
+    rows = [_synth_row(i, header, schema_def, rng) for i in range(3)]
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    # Header line ends with a tab (the phantom empty column in published v54.1).
-    out_path.write_text(
-        "\t".join(header) + "\t\n" + "\t".join(row) + "\n",
-        encoding="utf-8",
-    )
+    # EVERY line ends with a trailing tab — header AND data rows — exactly as the
+    # published v54.1 files do. The tab yields a phantom empty final column the
+    # loader drops. The data rows MUST carry the tab too: if only the header does,
+    # the header is wider than the data and the fixture never exercises the real
+    # shape (the regression where the loader, handed the narrower dropped header as
+    # `names`, shifts every field one column right).
+    body = "".join("\t".join(r) + "\t\n" for r in rows)
+    out_path.write_text("\t".join(header) + "\t\n" + body, encoding="utf-8")
 
 
 def make_v52_encoding_artifact_fixture(
