@@ -47,3 +47,13 @@ def test_defensive_path_coerces_garbage_to_na() -> None:
     assert str(out.dtype) == "Int64"
     assert out.isna().sum() == 2
     assert out.dropna().tolist() == [1000, 2000]
+
+
+def test_defensive_path_non_integral_and_infinite_become_na() -> None:
+    """pd.to_numeric alone yields a float that .astype('Int64') would RAISE on for
+    a fractional ('12.5') or infinite ('inf') cell; the defensive path must coerce
+    those to <NA> instead of crashing the load. Whole-number floats ('3850.0') stay."""
+    s = pd.Series(["3850.0", "12.5", "inf", "-inf", "5"])
+    out = to_int64_nullable_defensive(s)
+    assert str(out.dtype) == "Int64"
+    assert out.tolist() == [3850, pd.NA, pd.NA, pd.NA, 5]

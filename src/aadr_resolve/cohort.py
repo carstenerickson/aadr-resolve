@@ -185,7 +185,6 @@ def build_manifest(
     cohort_version: str,
     no_propagate: bool = False,
     collapse: bool = False,
-    strict_versions: bool = True,
     gid_preference: tuple[str, ...] = (
         "AG",
         "DG",
@@ -209,11 +208,9 @@ def build_manifest(
          library_token.collapse_to_individual.
       e. Sort rows: (cohort_label, individual_id_canonical, library_token).
       f. Pack into CohortManifest."""
-    # Per-version manifest columns are keyed by version label; reject duplicates
-    # before they silently overwrite each other. `join` reuses this with
-    # strict_versions=False so a same-class self-join (identical data) is allowed
-    # while the cross-panel collision is still caught.
-    ensure_unique_versions(anno_frames, strict=strict_versions)
+    # Per-version manifest columns are keyed by version label; reject any duplicate
+    # label (cross-panel or same-class patch) before it silently overwrites a column.
+    ensure_unique_versions(anno_frames)
     sorted_afs = sorted(anno_frames, key=version_tuple)
     sorted_versions = tuple(af.version for af in sorted_afs)
 

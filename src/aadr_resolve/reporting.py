@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from .types import CohortManifest, CohortRunSummary, DiffRunSummary
+from .types import CohortManifest, CohortRunSummary, DiffRunSummary, GroupChangeClass
 
 # Missing-cell sentinel per HLD §Output: cohort manifest TSV.
 TSV_NULL_SENTINEL = "--"
@@ -248,18 +248,12 @@ def _format_group_change_histogram(
     first_v = versions_supplied[0] if versions_supplied else ""
     last_v = versions_supplied[-1] if versions_supplied else ""
     lines = [f"Group ID changes ({first_v} → {last_v}):"]
-    for cls in (
-        "convention_restructure_suffix",
-        "convention_restructure_country",
-        "convention_restructure_prefix_drop",
-        "convention_restructure_order",
-        "convention_restructure_punct",
-        "partial",
-        "substantive_regroup",
-    ):
-        count = group_change_by_class.get(cls, 0)
+    # Iterate the GroupChangeClass enum (in its documented priority order) so a
+    # newly-added class can never be silently dropped from the histogram.
+    for gc in GroupChangeClass:
+        count = group_change_by_class.get(gc.value, 0)
         if count > 0:
-            lines.append(f"  {cls:34s}  {count}")
+            lines.append(f"  {gc.value:34s}  {count}")
     return lines
 
 

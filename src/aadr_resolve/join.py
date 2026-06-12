@@ -76,8 +76,5 @@ def compute_join(
         cohort_version=cohort_version,
         no_propagate=True,
         collapse=collapse,
-        # join is a 2-frame flow that may legitimately pair same-label same-class
-        # frames (e.g. a self-join); only the cross-panel collision is fatal here.
-        strict_versions=False,
         gid_preference=gid_preference,
     )

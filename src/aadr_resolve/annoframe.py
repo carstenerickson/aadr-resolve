@@ -209,25 +209,23 @@ class AnnoFrame:
         )
 
 
-def ensure_unique_versions(anno_frames: list[AnnoFrame], *, strict: bool = True) -> None:
-    """Reject frames that share a version label and would collide in a per-version dict.
+def ensure_unique_versions(anno_frames: list[AnnoFrame]) -> None:
+    """Reject any two frames that share a version label.
 
-    The version-keyed flows store per-version state by `version_label` in plain
-    dicts, so two frames at one label silently overwrite each other — one frame's
-    data vanishes with no error. Two ways this happens:
+    The cross-version flows (cohort, join, lookup) store per-version state by
+    `version_label` in plain dicts, so two frames at one label silently overwrite
+    each other — one frame's data vanishes with no error. A shared label arises two
+    ways, both rejected because the per-version data collides either way:
 
-      - DIFFERENT classes, one label: class F (early Human Origins) shares
-        v44.3/v50.0 with class A (1240K), so the 1240K and HO panels of one release
-        both infer `v50.0` while carrying different data.
-      - SAME class, one label: a patch release infers the same label as its base
-        (e.g. `aadr_v54.1.p1_..._public.anno` and `aadr_v54.1_..._public.anno` both
-        infer `v54.1`, both class C), or the same file is supplied twice.
+      - DIFFERENT classes: class F (early Human Origins) shares v44.3/v50.0 with
+        class A (1240K), so the 1240K and HO panels of one release both infer e.g.
+        `v50.0` while carrying different data.
+      - SAME class: a patch release infers the same label as its base (e.g.
+        `aadr_v54.1.p1_..._public.anno` and `aadr_v54.1_..._public.anno` both infer
+        `v54.1`, both class C), or the same file is supplied twice.
 
-    `strict=True` (the N-version `cohort` flow) rejects both — a cohort spans
-    distinct versions, so any shared label is a mistake. `strict=False` (the 2-frame
-    `join`, which reuses the cohort machinery) rejects only the cross-class panel
-    collision; a same-class same-label pairing (e.g. a self-join) is harmless there
-    because both frames carry identical per-version data."""
+    Every cross-version flow spans distinct versions, so a shared label is always a
+    mistake — there is no flow that legitimately pairs two frames at one label."""
     from .errors import UsageError
 
     seen: dict[str, AnnoFrame] = {}
@@ -235,15 +233,13 @@ def ensure_unique_versions(anno_frames: list[AnnoFrame], *, strict: bool = True)
         prev = seen.get(af.version)
         if prev is not None:
             same_class = prev.schema_class == af.schema_class
-            if same_class and not strict:
-                continue
             detail = (
                 f"both schema class {af.schema_class.value} — e.g. a release and its "
-                f".p1 patch, or the same file twice"
+                ".p1 patch, or the same file twice"
                 if same_class
                 else f"different schema classes ({prev.schema_class.value} and "
-                f"{af.schema_class.value}) — e.g. the 1240K and Human Origins panels of "
-                f"one release"
+                f"{af.schema_class.value}) — e.g. the 1240K and Human Origins panels "
+                "of one release"
             )
             raise UsageError(
                 f"two .anno files share version label {af.version!r} ({detail}). These "

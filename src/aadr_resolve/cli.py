@@ -26,7 +26,10 @@ from .types import ExitCode, SchemaClass
     "--schema-override",
     type=click.Choice([c.value for c in SchemaClass]),
     default=None,
-    help="Force schema class (A|B|C|D|E|F) instead of auto-detecting from header.",
+    help=(
+        f"Force schema class ({'|'.join(c.value for c in SchemaClass)}) "
+        "instead of auto-detecting from header."
+    ),
 )
 @click.option(
     "--version-label",
